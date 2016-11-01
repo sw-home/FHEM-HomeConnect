@@ -512,22 +512,23 @@ sub HomeConnectConnection_delrequest
   <a name="HomeConnectConnection_define"></a>
   <h4>Define</h4>
   <ul>
-    <code>define &lt;name&gt; HomeConnectConnection &lt;room_id&gt;</code>
+    <code>define &lt;name&gt; HomeConnectConnection &lt;api_key&gt; &lt;redirect_url&gt; [simulator]</code>
     <br/>
     <br/>
-    Defines a connection and login to Home Connect Household appliances. See <a href="http://www.home-connect.com/">Home Connect</a>.<br><br>
+    Defines a connection and login to Home Connect Household appliances. See <a href="http://www.home-connect.com/">Home Connect</a> for details.<br>
     <br/>
     The following steps are needed to link FHEM to Home Connect:<br/>
     <ul>
-      Create a developer account at <a href="https://developer.home-connect.com/">Home Connect for Developers</a><br>
-      Create your Application under "My Applications", the REDIRECT-URL must be pointing to your local FHEM installation, e.g.
-      <code>http://localhost:8083/fhem?cmd.Test=set%20hcconn%20auth%20</code>
-      Make sure to include the rest of the URL as shown above.
+      <li>Create a developer account at <a href="https://developer.home-connect.com/">Home Connect for Developers</a><br>
+      <li>Create your Application under "My Applications", the REDIRECT-URL must be pointing to your local FHEM installation, e.g.<br>
+      <code>http://localhost:8083/fhem?cmd.Test=set%20hcconn%20auth%20</code><br>
+      <li>Make sure to include the rest of the URL as shown above. Then define the connection with your API Key and URL:<br>
       <code>define hcconn HomeConnectConnection API-KEY REDIRECT-URL [simulator]</code><br>
-      <code>set hcconn scanDevices</code><br>
+      <li>Click on the link "Home Connect Login" in the device and log in to your account. The simulator will not ask for any credentials.
+      <li>Execute the set scanDevices action to create FHEM devices for your appliances.
     </ul>
     <br/>
-	Currently, Home Connect only supports the Simulator, no real Appliances. So the keyword <b>simulator</b> needs to be added to the definition.
+	Currently, Home Connect API only supports the Simulator, no real Appliances. So the keyword <b>simulator</b> needs to be added to the definition.
     <br/>
 	If your FHEM server does not run on localhost, please change the REDIRECT-URL accordingly
     <br/>
