@@ -37,6 +37,7 @@ sub HomeConnectConnection_Initialize($)
   $hash->{GetFn}        = "HomeConnectConnection_Get";
   $hash->{FW_summaryFn} = "HomeConnectConnection_FwFn";
   $hash->{FW_detailFn}  = "HomeConnectConnection_FwFn";
+  $hash->{AttrList}  	= "accessScope";
 }
 
 ###################################
@@ -120,12 +121,14 @@ HomeConnectConnection_FwFn($$$$)
 
   } else {
 
-    my $scope = "IdentifyAppliance%20Monitor%20Settings%20Dishwasher-Control%20Washer-Control%20Dryer-Control%20CoffeeMaker-Control";
+    my $scope = AttrVal($hash->{NAME}, "accessScope", 
+    	"IdentifyAppliance Monitor Settings Dishwasher-Control Washer-Control Dryer-Control CoffeeMaker-Control");
 
-    $fmtOutput = "<a href=\"$hash->{api_uri}/security/oauth/authorize?response_type=code&" .
-	"redirect_uri=". uri_escape($hash->{redirect_uri}) . "&realm=fhem.de&" .
-        "client_id=$hash->{client_id}&scope=$scope&".
-	"state=HomeConnectConnection_auth\">Home Connect Login</a>";
+    $fmtOutput = "<a href=\"$hash->{api_uri}/security/oauth/authorize?response_type=code" .
+		"&redirect_uri=". uri_escape($hash->{redirect_uri}) . "&realm=fhem.de" .
+        "&client_id=$hash->{client_id}&scope=" . uri_escape($scope) .
+		"&state=HomeConnectConnection_auth\">Home Connect Login</a>";
+
     $hash->{STATE} = "Login necessary";
 
   }
@@ -140,6 +143,14 @@ sub HomeConnectConnection_GetAuthToken
   my ($hash,$tokens) = @_;
   my $name = $hash->{NAME};
   my $JSON = JSON->new->utf8(0)->allow_nonref;
+
+  my $error = $FW_webArgs{"error"};
+  if (defined $error) {
+    my $err_desc = $FW_webArgs{"error_description"};
+    my $msg = "Login to Home Connect failed with error $error";
+    $msg .= ": $err_desc" if defined($err_desc); 
+    return $msg;
+  }
 
   my $code = $FW_webArgs{"code"};
   if (!defined $code) {
@@ -547,6 +558,16 @@ sub HomeConnectConnection_delrequest
       </li>
     <li>logout<br>
       Delete the access token and refresh tokens, and show the login link again.
+      </li>
+  </ul>
+  <br>
+  <a name="HomeConnectConnection_Attr"></a>
+  <h4>Attributes</h4>
+  <ul>
+	<li>AccessScope<br>
+	  Change this attribute to limit the access rights given to FHEM. The default is:  
+	  IdentifyAppliance Monitor Settings Dishwasher-Control Washer-Control Dryer-Control CoffeeMaker-Control
+	  Minimum setting would be IdentifyAppliance Monitor.
       </li>
   </ul>
   <br>
