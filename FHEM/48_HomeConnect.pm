@@ -58,6 +58,8 @@ sub HomeConnect_Set($@)
   my ($hash, @a) = @_;
   my $rc = undef;
   my $reDOUBLE = '^(\\d+\\.?\\d{0,2})$';
+  my $JSON = JSON->new->utf8(0)->allow_nonref;
+
   my $haId = $hash->{haId};
   my $cmdPrefix = $hash->{commandPrefix};
   my $programs = $hash->{programs};
@@ -125,14 +127,24 @@ sub HomeConnect_Set($@)
       }
     }
     my $URL = "/api/homeappliances/$haId/programs/active";
-    HomeConnectConnection_putrequest($hash,$URL,"{\"data\":{\"key\":\"$cmdPrefix$pgm\",\"options\":[$options]}}");
+    my $data = HomeConnectConnection_putrequest($hash,$URL,"{\"data\":{\"key\":\"$cmdPrefix$pgm\",\"options\":[$options]}}");
+    if (defined $data) {
+       my $json = $JSON->decode($data);
+       if( $json->{error} ) {
+         if (defined $json->{error}->{description}) {
+           $rc = $json->{error}->{description};
+         } else {  
+           $rc = $json->{error};
+         }
+       }
+    }
 
   }
   ## Stop current program
   if($command eq "stopProgram") {
     return "No program is running" if (!$pgmRunning);
     my $URL = "/api/homeappliances/$haId/programs/active";
-    HomeConnectConnection_delrequest($hash,$URL);
+    $rc = HomeConnectConnection_delrequest($hash,$URL);
   }
   ## Set options, update current program if needed
   if(index($availableOpts,$command)>-1) {
@@ -146,7 +158,7 @@ sub HomeConnect_Set($@)
 
     if ($pgmRunning) {
       my $URL = "/api/homeappliances/$haId/programs/active/options/$command";
-      HomeConnectConnection_putrequest($hash,$URL,"{\"data\":{\"key\":\"$command\",\"value\":\"$optval\"}}");
+      $rc = HomeConnectConnection_putrequest($hash,$URL,"{\"data\":{\"key\":\"$command\",\"value\":\"$optval\"}}");
     }
 
   }
@@ -510,6 +522,11 @@ sub HomeConnect_HttpConnected
   my ($param, $err, $data) = @_;
   my $hash = $param->{hash};
   my $name = $hash->{NAME};
+  
+  if (!defined $param->{conn}) {
+    HomeConnect_CloseEventChannel($hash);
+    return;
+  }
 
   my ($gterror, $token) = getKeyValue($hash->{hcconn}."_accessToken");
 
