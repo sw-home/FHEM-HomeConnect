@@ -128,7 +128,7 @@ sub HomeConnect_Set($@)
     }
     my $URL = "/api/homeappliances/$haId/programs/active";
     my $data = HomeConnectConnection_putrequest($hash,$URL,"{\"data\":{\"key\":\"$cmdPrefix$pgm\",\"options\":[$options]}}");
-    if (defined $data) {
+    if (defined $data && length ($data) >0) {
        my $json = $JSON->decode($data);
        if( $json->{error} ) {
          if (defined $json->{error}->{description}) {
