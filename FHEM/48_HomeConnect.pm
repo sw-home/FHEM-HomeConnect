@@ -102,7 +102,7 @@ sub HomeConnect_Set($@)
   shift @a;
   my $command = shift @a;
 
-  Log 4, "$hash->{NAME} set command: $command";
+  Log3 $hash->{NAME}, 2, "set command: $command";
 
   ## Start a program
   if($command eq "startProgram") {
@@ -221,7 +221,7 @@ sub HomeConnect_Init($)
       $hash->{brand} = $appliance->{brand};
       $hash->{vib} = $appliance->{vib};
       $hash->{connected} = $appliance->{connected};
-      Log 2, "$hash->{NAME} defined HomeConnect $hash->{type} $hash->{brand} $hash->{vib}, connected $hash->{connected}";
+      Log3 $hash->{NAME}, 2, "$hash->{NAME} defined as HomeConnect $hash->{type} $hash->{brand} $hash->{vib}";
 
       my $icon = $HomeConnect_Iconmap{$appliance->{type}};
 
@@ -247,7 +247,7 @@ sub HomeConnect_Undef($$)
 
    RemoveInternalTimer($hash);
    HomeConnect_CloseEventChannel($hash);
-   Log 3, "--- removed ---";
+   Log3 $hash->{NAME}, 3, "--- removed ---";
    return undef;
 }
 
@@ -270,7 +270,7 @@ sub HomeConnect_Get($@)
 
   return "HomeConnect_Get: no such reading: $get, choose one of dummy";
 
-  Log 3, "$args[0] $get => $val";
+  Log3 $hash->{NAME}, 3, "$args[0] $get => $val";
 
   return $val;
 }
@@ -389,7 +389,7 @@ sub HomeConnect_checkPrefix
 #####################################
 sub HomeConnect_parseOptionsToHash
 {
-  my ($parsed) = @_;
+  my ($hash, $parsed) = @_;
   my %options = ();
 
   for (my $i = 0; 1; $i++) {
@@ -398,7 +398,7 @@ sub HomeConnect_parseOptionsToHash
     my $key = $optionsline->{key};
 #    $key =~ tr/\\./_/;
     $options{ $key } = "$optionsline->{value} $optionsline->{unit}";
-    Log 3,"$key = $optionsline->{value} $optionsline->{unit}";
+    Log3 $hash->{NAME}, 4, "$key = $optionsline->{value} $optionsline->{unit}";
   }
   return \%options;
 }
@@ -413,9 +413,9 @@ sub HomeConnect_parseOptionsToHash2
     if (!defined $optionsline) { last };
     my $key = $optionsline->{key};
 #    $key =~ tr/\\./_/;
-    $hash->{$key} = "$optionsline->{value}";
+    $hash->{$key} = "$optionsline->{value}" if (defined $optionsline->{value});
     $hash->{$key} .= " $optionsline->{unit}" if (defined $optionsline->{unit});
-#    Log 3,"$key = $optionsline->{value} $optionsline->{unit}";
+#    Log3 $hash->{NAME}, 4, "$key = $optionsline->{value} $optionsline->{unit}";
   }
 }
 
@@ -577,7 +577,7 @@ sub HomeConnect_ReadEventChannel($)
     while (1) {
       my $nfound = select($rout=$rin, undef, undef, 0);
       if($nfound < 0) {
-        Log 2,"Channel timeout/error: $!";
+        Log3 $hash->{NAME}, 2, "$hash->{NAME} channel timeout/error: $!";
         HomeConnect_CloseEventChannel($hash);
         return undef;
       }
@@ -587,7 +587,7 @@ sub HomeConnect_ReadEventChannel($)
         if(defined($len) && $len > 0) {
           $inputbuf .= $buf if(defined($len) && $len > 0);
         } else {
-          Log 2,"Nothing to read, channel closed";
+          Log3 $hash->{NAME}, 2, "$hash->{NAME} found nothing to read, channel closed";
           HomeConnect_CloseEventChannel($hash);
           return undef;
         }
@@ -598,7 +598,7 @@ sub HomeConnect_ReadEventChannel($)
       }
     }
     if (length $inputbuf > 0) {
-      Log 4,$hash->{NAME}." received: $inputbuf";
+      Log3 $hash->{NAME}, 5, "$hash->{NAME} received $inputbuf";
 
       readingsBeginUpdate($hash);
 
@@ -606,7 +606,7 @@ sub HomeConnect_ReadEventChannel($)
         if (index($_,"data:") == 0) {
           if (length ($_) < 10) { next };
           my $json = substr($_,5);
-          Log 4,$hash->{NAME}." data: $json";
+          Log3 $hash->{NAME}, 5, "$hash->{NAME} found data: $json";
           my $parsed = $JSON->decode ($json);
 
           #### Update Readings
@@ -618,13 +618,13 @@ sub HomeConnect_ReadEventChannel($)
             $readings{$key}=(defined $item->{value})?$item->{value}:"-";
             $readings{$key}.=" ".$item->{unit} if defined $item->{unit};
             readingsBulkUpdate($hash, $key, $readings{$key});
-            Log 4,$hash->{NAME}." $key = $readings{$key}";
+            Log3 $hash->{NAME}, 4, "$key = $readings{$key}";
           }
 
           my $state;
           my $operationState = ReadingsVal($hash->{NAME},"BSH.Common.Status.OperationState","");
           my $program = ReadingsVal($hash->{NAME},"BSH.Common.Root.ActiveProgram","");
-          if (defined($hash->{commandPrefix})) {
+          if (defined($program) && defined($hash->{commandPrefix}) && length($program) > length($hash->{commandPrefix}) ) {
             my $prefixLen = length $hash->{commandPrefix};
             $program = substr($program, $prefixLen);
           }

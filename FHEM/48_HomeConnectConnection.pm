@@ -85,7 +85,7 @@ sub HomeConnectConnection_Define($$)
   if(int(@a) >= 4) {
     $hash->{client_id} = $a[2];
     $hash->{redirect_uri} = $a[3];
-    if ("simulator" eq $a[4]) {
+    if (int(@a) > 4 && "simulator" eq $a[4]) {
       $hash->{simulator} = "1";
       $hash->{api_uri} = "https://developer.home-connect.com";
     }
@@ -154,12 +154,12 @@ sub HomeConnectConnection_GetAuthToken
 
   my $code = $FW_webArgs{"code"};
   if (!defined $code) {
-    Log3 $name, 3, "Searching auth tokens in: $tokens";
+    Log3 $name, 4, "Searching auth tokens in: $tokens";
     $tokens =~ m/code=([^&]*)/;
     $code = $1;
   }
 
-  Log3 $name, 3, "Got oauth code: $code";
+  Log3 $name, 4, "Got oauth code: $code";
 
   my($err,$data) = HttpUtils_BlockingGet({
     url => "$hash->{api_uri}/security/oauth/token",
@@ -173,13 +173,13 @@ sub HomeConnectConnection_GetAuthToken
   });
 
   if( $err ) {
-    Log3 $name, 2, "$name: http request failed: $err";
+    Log3 $name, 2, "$name http request failed: $err";
   } elsif( $data ) {
-    Log3 $name, 2, "$name: AuthTokenResponse $data";
+    Log3 $name, 2, "$name AuthTokenResponse $data";
 
     $data =~ s/\n//g;
     if( $data !~ m/^{.*}$/m ) {
-      Log3 $name, 2, "$name: invalid json detected: >>$data<<";
+      Log3 $name, 2, "$name invalid json detected: >>$data<<";
       return undef;
     }
   }
@@ -233,14 +233,14 @@ sub HomeConnectConnection_RefreshToken($)
 
   my ($gkerror, $refreshToken) = getKeyValue($conn->{NAME}."_refreshToken");
   if (!defined $refreshToken) {
-    Log3 $name, 2, "$name: no token to be refreshed";
+    Log3 $name, 4, "$name: no token to be refreshed";
     return undef;
   }
 
   if( defined($conn->{expires_at}) ) {
     my ($seconds) = gettimeofday();
     if( $seconds < $conn->{expires_at} - 300 ) {
-      Log3 $name, 2, "$name: no token refresh needed";
+      Log3 $name, 4, "$name: no token refresh needed";
       return undef 
     }
   }
@@ -260,7 +260,7 @@ sub HomeConnectConnection_RefreshToken($)
   if( $err ) {
     Log3 $name, 2, "$name: http request failed: $err";
   } elsif( $data ) {
-    Log3 $name, 2, "$name: RefreshTokenResponse $data";
+    Log3 $name, 4, "$name: RefreshTokenResponse $data";
 
     $data =~ s/\n//g;
     if( $data !~ m/^{.*}$/m ) {
@@ -304,7 +304,7 @@ sub HomeConnectConnection_RefreshToken($)
   if (defined $conn->{refreshFailCount}) {
     $conn->{refreshFailCount} += 1;
     if ($conn->{refreshFailCount}==10) {
-      Log 2,$conn->{NAME} . " refreshing token failed too many times, stopping";
+      Log3 $conn->{NAME}, 2, "$conn->{NAME}: Refreshing token failed too many times, stopping";
       $conn->{STATE} = "Login necessary";
       setKeyValue($hash->{NAME}."_refreshToken", undef);
       return undef;
@@ -349,7 +349,7 @@ sub HomeConnectConnection_Undef($$)
    my ( $hash, $arg ) = @_;
 
    RemoveInternalTimer($hash);
-   Log 3, "--- removed ---";
+   Log3 $hash->{NAME}, 3, "--- removed ---";
    return undef;
 }
 
@@ -373,7 +373,7 @@ sub HomeConnectConnection_RefreshTokenTimer($)
   my ($hash) = @_;
   my $name = $hash->{NAME};
 
-  Log 2, "$name: refreshing token";
+  Log3 $name, 3, "$name refreshing token";
 
   undef $hash->{expires_at};
   HomeConnectConnection_RefreshToken($hash);
@@ -389,7 +389,7 @@ sub HomeConnectConnection_request
 
   $URL = $api_uri . $URL;
 
-  Log 3, "$name HomeConnectConnection request: $URL";
+  Log3 $name, 4, "$name request: $URL";
 
   HomeConnectConnection_RefreshToken($hash);
 
@@ -410,12 +410,11 @@ sub HomeConnectConnection_request
   my ($err, $data) = HttpUtils_BlockingGet($param);
 
   if ($err) {
-    my $err_log = "Can't get $URL -- " . $err;
-    Log 1, $err_log;
+    Log3 $name, 2, "$name can't get $URL -- " . $err;
     return undef;
   }
 
-  Log 3, "HomeConnectConnection response: " . $data;
+  Log3 $name, 4 , "$name response: " . $data;
 
   return $data;
 
@@ -431,7 +430,7 @@ sub HomeConnectConnection_putrequest
 
   $URL = $api_uri . $URL;
 
-  Log 3, "HomeConnectConnection PUT request: $URL with data: $put_data";
+  Log3 $name, 4, "$name PUT request: $URL with data: $put_data";
 
   HomeConnectConnection_RefreshToken($hash);
 
@@ -457,12 +456,11 @@ sub HomeConnectConnection_putrequest
   my ($err, $data) = HttpUtils_BlockingGet($param);
 
   if ($err) {
-    my $err_log = "Can't put $URL -- " . $err;
-    Log 1, $err_log;
+    Log3 $name, 1, "$name can't put $URL -- " . $err;
     return undef;
   }
 
-  Log 3, "HomeConnectConnection PUT response: " . $data;
+  Log3 $name, 4, "$name PUT response: " . $data;
 
   return $data;
 
@@ -478,7 +476,7 @@ sub HomeConnectConnection_delrequest
 
   $URL = $api_uri . $URL;
 
-  Log 3, "$name HomeConnectConnection DELETE request: $URL";
+  Log3 $name, 4, "HomeConnectConnection DELETE request: $URL";
 
   HomeConnectConnection_RefreshToken($hash);
 
@@ -500,12 +498,11 @@ sub HomeConnectConnection_delrequest
   my ($err, $data) = HttpUtils_BlockingGet($param);
 
   if ($err) {
-    my $err_log = "Can't delete $URL -- " . $err;
-    Log 1, $err_log;
+    Log3 $name, 1, "$name can't delete $URL -- " . $err;
     return undef;
   }
 
-  Log 3, "HomeConnectConnection DELETE response: " . $data;
+  Log3 $name, 4, "HomeConnectConnection DELETE response: " . $data;
 
   return $data;
 
@@ -530,47 +527,58 @@ sub HomeConnectConnection_delrequest
     <br/>
     The following steps are needed to link FHEM to Home Connect:<br/>
     <ul>
-      <li>Create a developer account at <a href="https://developer.home-connect.com/">Home Connect for Developers</a><br>
-      <li>Create your Application under "My Applications", the REDIRECT-URL must be pointing to your local FHEM installation, e.g.<br>
-      <code>http://localhost:8083/fhem?cmd.Test=set%20hcconn%20auth%20</code><br>
-      <li>Make sure to include the rest of the URL as shown above. Then define the connection with your API Key and URL:<br>
-      <code>define hcconn HomeConnectConnection API-KEY REDIRECT-URL [simulator]</code><br>
-      <li>Click on the link "Home Connect Login" in the device and log in to your account. The simulator will not ask for any credentials.
-      <li>Execute the set scanDevices action to create FHEM devices for your appliances.
+      <li>Create a developer account at <a href="https://developer.home-connect.com/">Home Connect for Developers</a></li>
+      <li>Update your account to an <b>Advanced Account</b></li>
+      <li>Create your Application under "My Applications", the REDIRECT-URL must be pointing to your local FHEM installation, e.g.<br/>
+      <code>http://localhost:8083/fhem?cmd.Test=set%20hcconn%20auth%20</code><br/></li>
+      <li>Make sure to include the rest of the URL as shown above. Then define the FHEM HomeConnectConnection device with your API Key and URL:<br/>
+      <code>define hcconn HomeConnectConnection API-KEY REDIRECT-URL [simulator]</code><br/></li>
+      <li>Click on the link "Home Connect Login" in the device and log in to your account. The simulator will not ask for any credentials.</li>
+      <li>Execute the set scanDevices action to create FHEM devices for your appliances.</li>
     </ul>
     <br/>
 	Currently, Home Connect API only supports the Simulator, no real Appliances. So the keyword <b>simulator</b> needs to be added to the definition.
     <br/>
 	If your FHEM server does not run on localhost, please change the REDIRECT-URL accordingly
+	<br/>
+	If you would like to name your HomeConnectConnection differently or if you need to connect to more than one account, the name hcconn may be changed.
+	Make sure to update the new name into your REDIRECT-URL (both in FHEM and Home Connect). If you want to use more than one connection, you will need 
+	to create two different applications in Home Connect. 
     <br/>
+    <b>Troubleshooting tips:</b> If you see errors when logging in, you should check the following points:<ul>
+      <li>Do you have an advanced Home Connect Developer account? If not, set the AccessScope attribute or update your account.</li>
+      <li>Does the redirect URL point to you FHEM and is it according to the specifications above?</li>
+      <li>Is the name of your HomeConnectConnection device hcconn? If not, you need to update the URL accordingly.</li>
+      <li>Is the redirect URL identically defined in your Home Connect Developer application and in you FHEM device definition?</li>
+    </ul>
   </ul>
-  <br>
+  <br/>
   <a name="HomeConnectConnection_set"></a>
   <b>Set</b>
   <ul>
-    <li>scanDevices<br>
+    <li>scanDevices<br/>
       Start a device scan of the Home Connect account. The registered Home Connect devices are then created automatically
       in FHEM. The device scan can be started several times and will not duplicate devices as long as they have not been
       renamed in FHEM. You should change the alias attribute instead.
       </li>
-    <li>refreshToken<br>
+    <li>refreshToken<br/>
       Manually refresh the access token. This should be necessary only after internet connection problems.
       </li>
-    <li>logout<br>
+    <li>logout<br/>
       Delete the access token and refresh tokens, and show the login link again.
       </li>
   </ul>
-  <br>
+  <br/>
   <a name="HomeConnectConnection_Attr"></a>
   <h4>Attributes</h4>
   <ul>
-	<li>AccessScope<br>
+	<li>AccessScope<br/>
 	  Change this attribute to limit the access rights given to FHEM. The default is:  
-	  IdentifyAppliance Monitor Settings Dishwasher-Control Washer-Control Dryer-Control CoffeeMaker-Control
-	  Minimum setting would be IdentifyAppliance Monitor.
+	  <b>IdentifyAppliance Monitor Settings Dishwasher-Control Washer-Control Dryer-Control CoffeeMaker-Control</b>
+	  Minimum setting would be <b>IdentifyAppliance Monitor</b>. This minimum setting will also work for non-advanced Home Connect Developer Accounts.
       </li>
   </ul>
-  <br>
+  <br/>
 
 </ul>
 
