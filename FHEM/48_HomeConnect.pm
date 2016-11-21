@@ -551,6 +551,7 @@ sub HomeConnect_HttpConnected
 
   syswrite $param->{conn}, $hdr;
   $hash->{conn} = $param->{conn};
+  $hash->{eventChannelTimeout} = time();
 }
 
 #####################################
@@ -575,6 +576,13 @@ sub HomeConnect_ReadEventChannel($)
     my ($rout, $rin) = ('', '');
     vec($rin, $hash->{conn}->fileno(), 1) = 1;
     while (1) {
+      # check for timeout
+      if (defined $hash->{eventChannelTimeout} && 
+          (time() - $hash->{eventChannelTimeout}) > 130) {
+        Log3 $hash->{NAME}, 2, "$hash->{NAME} channel timeout, two keep alive messages missing";
+        HomeConnect_CloseEventChannel($hash);
+        return undef;
+      }
       my $nfound = select($rout=$rin, undef, undef, 0);
       if($nfound < 0) {
         Log3 $hash->{NAME}, 2, "$hash->{NAME} channel timeout/error: $!";
@@ -599,6 +607,8 @@ sub HomeConnect_ReadEventChannel($)
     }
     if (length $inputbuf > 0) {
       Log3 $hash->{NAME}, 5, "$hash->{NAME} received $inputbuf";
+
+      $hash->{eventChannelTimeout} = time();
 
       readingsBeginUpdate($hash);
 
