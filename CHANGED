@@ -1,0 +1,31 @@
+Nov 28, 2016
+
+	Added this CHANGED file
+	
+Nov 21, 2016
+
+    Added timeout feature to check for missing keep alive messages
+
+Nov 20, 2016
+
+    Improved logging, fixed some warnings
+
+Nov 18, 2016
+
+    Added controls file for FHEM update
+
+Nov 15, 2016
+
+    fix for the fix
+
+Nov 3, 2016
+
+    Added new attribute accessScope to setup access rights 
+
+Nov 1, 2016
+
+    documentation update
+
+Oct 31, 2016
+
+    First commit
