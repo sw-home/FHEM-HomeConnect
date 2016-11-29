@@ -204,7 +204,7 @@ sub HomeConnectConnection_GetAuthToken
     readingsEndUpdate($hash, 1);
 
     foreach my $key ( keys %defs ) {
-      if ($defs{$key}->{TYPE} eq "HomeConnect") {
+      if (($defs{$key}->{TYPE} eq "HomeConnect") && ($defs{$key}->{hcconn} eq $hash->{NAME})) {
         fhem "set $key init";
       }
     }

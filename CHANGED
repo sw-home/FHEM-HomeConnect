@@ -1,3 +1,8 @@
+Nov 29, 2016
+
+	Added reading and updating of appliance settings
+	Improved event stream reading
+
 Nov 28, 2016
 
 	Added this CHANGED file
@@ -16,15 +21,17 @@ Nov 18, 2016
 
 Nov 15, 2016
 
-    fix for the fix
+    Fix crash when event channel does not open
+	Show error messages when program start does not work
 
 Nov 3, 2016
 
     Added new attribute accessScope to setup access rights 
+    Display error messages after failed Home Connect logon
 
 Nov 1, 2016
 
-    documentation update
+    Documentation update
 
 Oct 31, 2016
 
