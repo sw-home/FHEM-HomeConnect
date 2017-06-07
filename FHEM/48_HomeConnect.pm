@@ -335,7 +335,7 @@ sub HomeConnect_Timer
     HomeConnect_ReadEventChannel($hash);
   }
   $hash->{retrycounter} = $retryCounter;
-  InternalTimer( gettimeofday() + (($retryCounter -1) * 60) + $updateTimer), "HomeConnect_Timer", $hash, 0);
+  InternalTimer( gettimeofday() + (($retryCounter -1) * 60) + $updateTimer, "HomeConnect_Timer", $hash, 0);
 }
 
 #####################################
