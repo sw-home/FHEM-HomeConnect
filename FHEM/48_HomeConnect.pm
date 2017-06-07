@@ -67,7 +67,7 @@ sub HomeConnect_Set($@)
   my $remoteStartAllowed = ReadingsVal($hash->{NAME}, "BSH.Common.Status.RemoteControlStartAllowed","0");
   my $operationState = ReadingsVal($hash->{NAME}, "BSH.Common.Status.OperationState","0");
 
-  my $pgmRunning =($operationState eq "BSH.Common.EnumType.OperationState.Active" || 
+  my $pgmRunning =($operationState eq "BSH.Common.EnumType.OperationState.Active" ||
         $operationState eq "BSH.Common.EnumType.OperationState.DelayedStart" ||
         $operationState eq "BSH.Common.EnumType.OperationState.Run");
 
@@ -75,12 +75,14 @@ sub HomeConnect_Set($@)
   my $availableOpts="";
   my $availableSets="";
 
-  foreach my $reading (keys $hash->{READINGS}) {
-    if (index ($reading,".Option.")>0 && grep( /^$reading$/, @HomeConnect_SettablePgmOptions )) {
-      $availableOpts .= " ".$reading;
-    }
-    if (index ($reading,".Setting.")>0) {
-      $availableSets .= " ".$reading;
+  if (defined($hash->{READINGS})) {
+    foreach my $reading (keys $hash->{READINGS}) {
+      if (index ($reading,".Option.")>0 && grep( /^$reading$/, @HomeConnect_SettablePgmOptions )) {
+        $availableOpts .= " ".$reading;
+      }
+      if (index ($reading,".Setting.")>0) {
+        $availableSets .= " ".$reading;
+      }
     }
   }
 
