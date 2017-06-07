@@ -323,15 +323,19 @@ sub HomeConnect_Timer
   my ($hash) = @_;
   my $name   = $hash->{NAME};
 
+  my $retryCounter = defined($hash->{retrycounter}) ? $hash->{retrycounter} : 0;
+
   my $updateTimer = AttrVal($name, "updateTimer", 10);
 
   if (!defined $hash->{conn}) {
+    $retryCounter++;
     HomeConnect_ConnectEventChannel($hash);
   } else {
+    $retryCounter = 1;
     HomeConnect_ReadEventChannel($hash);
   }
-
-  InternalTimer( gettimeofday() + $updateTimer, "HomeConnect_Timer", $hash, 0);
+  $hash->{retrycounter} = $retryCounter;
+  InternalTimer( gettimeofday() + (($retryCounter -1) * 60) + $updateTimer), "HomeConnect_Timer", $hash, 0);
 }
 
 #####################################
@@ -685,15 +689,14 @@ sub HomeConnect_ReadEventChannel($)
       return undef;
     }
 
-    # read data
+    # read data, check if something is there
     if($nfound > 0) {
       my $len = sysread($hash->{conn},$inputbuf,32768);
       if(!defined($len) || $len == 0) {
-        Log3 $hash->{NAME}, 2, "$hash->{NAME} found nothing to read, channel closed";
-        HomeConnect_CloseEventChannel($hash);
         return undef;
       }
     }
+
     # process data
     if (defined($inputbuf) && length($inputbuf) > 0) {
 
