@@ -67,6 +67,9 @@ sub HomeConnectConnection_Set($@)
     setKeyValue($hash->{NAME}."_refreshToken",undef);
     undef $hash->{expires_at};
     $hash->{STATE} = "Login necessary";
+    readingsBeginUpdate($hash);
+    readingsBulkUpdate($hash, "state", $hash->{STATE});
+    readingsEndUpdate($hash, 1);
   }
 }
 
@@ -95,6 +98,9 @@ sub HomeConnectConnection_Define($$)
 #    $hash->{redirect_uri} = "http://fhem:8083/fhem?cmd.Test=set%20hcconn%20auth%20";
 #  }
   $hash->{STATE} = "Login necessary";
+  readingsBeginUpdate($hash);
+  readingsBulkUpdate($hash, "state", $hash->{STATE});
+  readingsEndUpdate($hash, 1);
 
   # start with a delayed token refresh
   setKeyValue($hash->{NAME}."_accessToken",undef);
@@ -115,26 +121,21 @@ HomeConnectConnection_FwFn($$$$)
 
   my $fmtOutput;
 
-  if (defined $authToken) {
+  if (!defined $authToken) {
 
-    $fmtOutput = $hash->{STATE} = "Logged in";
-
-  } else {
-
-    my $scope = AttrVal($hash->{NAME}, "accessScope", 
+    my $scope = AttrVal($hash->{NAME}, "accessScope",
     	"IdentifyAppliance Monitor Settings Dishwasher-Control Washer-Control Dryer-Control CoffeeMaker-Control");
 
-    $fmtOutput = "<a href=\"$hash->{api_uri}/security/oauth/authorize?response_type=code" .
-		"&redirect_uri=". uri_escape($hash->{redirect_uri}) . "&realm=fhem.de" .
-        "&client_id=$hash->{client_id}&scope=" . uri_escape($scope) .
-		"&state=HomeConnectConnection_auth\">Home Connect Login</a>";
+    my $csrfToken = InternalVal("WEB", "CSRFTOKEN", "HomeConnectConnection_auth");
 
-    $hash->{STATE} = "Login necessary";
+    $fmtOutput = "<a href=\"$hash->{api_uri}/security/oauth/authorize?response_type=code" .
+        "&redirect_uri=". uri_escape($hash->{redirect_uri}) . "&realm=fhem.de" .
+        "&client_id=$hash->{client_id}&scope=" . uri_escape($scope) .
+        "&state=" .$csrfToken. "\">Home Connect Login</a>";
 
   }
 
   return $fmtOutput;
-
 }
 
 #####################################
@@ -195,11 +196,12 @@ sub HomeConnectConnection_GetAuthToken
 
   if( $json->{access_token} ) {
     $hash->{STATE} = "Connected";
+    readingsBeginUpdate($hash);
+    readingsBulkUpdate($hash, "state", $hash->{STATE});
 
     ($hash->{expires_at}) = gettimeofday();
     $hash->{expires_at} += $json->{expires_in};
 
-    readingsBeginUpdate($hash);
     readingsBulkUpdate($hash, "tokenExpiry", scalar localtime $hash->{expires_at});
     readingsEndUpdate($hash, 1);
 
@@ -210,11 +212,14 @@ sub HomeConnectConnection_GetAuthToken
     }
 
     RemoveInternalTimer($hash);
-    InternalTimer(gettimeofday()+$json->{expires_in}*3/4, 
+    InternalTimer(gettimeofday()+$json->{expires_in}*3/4,
       "HomeConnectConnection_RefreshTokenTimer", $hash, 0);
     return undef;
   } else {
     $hash->{STATE} = "Error";
+    readingsBeginUpdate($hash);
+    readingsBulkUpdate($hash, "state", $hash->{STATE});
+    readingsEndUpdate($hash, 1);
   }
 } 
 
@@ -301,19 +306,25 @@ sub HomeConnectConnection_RefreshToken($)
   }
 
   $conn->{STATE} = "Refresh Error" ;
+
   if (defined $conn->{refreshFailCount}) {
     $conn->{refreshFailCount} += 1;
-    if ($conn->{refreshFailCount}==10) {
-      Log3 $conn->{NAME}, 2, "$conn->{NAME}: Refreshing token failed too many times, stopping";
-      $conn->{STATE} = "Login necessary";
-      setKeyValue($hash->{NAME}."_refreshToken", undef);
-      return undef;
-    }
   } else {
     $conn->{refreshFailCount} = 1;
   }
-  RemoveInternalTimer($conn);
-  InternalTimer(gettimeofday()+60, "HomeConnectConnection_RefreshTokenTimer", $conn, 0);
+
+  if ($conn->{refreshFailCount}==10) {
+    Log3 $conn->{NAME}, 2, "$conn->{NAME}: Refreshing token failed too many times, stopping";
+    $conn->{STATE} = "Login necessary";
+    setKeyValue($hash->{NAME}."_refreshToken", undef);
+  } else {
+    RemoveInternalTimer($conn);
+    InternalTimer(gettimeofday()+60, "HomeConnectConnection_RefreshTokenTimer", $conn, 0);
+  }
+
+  readingsBeginUpdate($hash);
+  readingsBulkUpdate($hash, "state", $hash->{STATE});
+  readingsEndUpdate($hash, 1);
   return undef;
 }
 
