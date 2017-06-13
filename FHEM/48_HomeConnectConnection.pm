@@ -289,9 +289,10 @@ sub HomeConnectConnection_RefreshToken($)
         undef $conn->{refreshFailCount};
         readingsBeginUpdate($conn);
         readingsBulkUpdate($conn, "tokenExpiry", scalar localtime $conn->{expires_at});
+        readingsBulkUpdate($conn, "state", $conn->{STATE});
         readingsEndUpdate($conn, 1);
         RemoveInternalTimer($conn);
-        InternalTimer(gettimeofday()+$json->{expires_in}*3/4, 
+        InternalTimer(gettimeofday()+$json->{expires_in}*3/4,
           "HomeConnectConnection_RefreshTokenTimer", $conn, 0);
         if (!$gotToken) {
           foreach my $key ( keys %defs ) {
@@ -538,26 +539,29 @@ sub HomeConnectConnection_delrequest
     <br/>
     The following steps are needed to link FHEM to Home Connect:<br/>
     <ul>
+      <li>Define a static CSRF Token in FHEM using a command like <code>attr WEB.* csrfToken myToken123</code>
       <li>Create a developer account at <a href="https://developer.home-connect.com/">Home Connect for Developers</a></li>
       <li>Update your account to an <b>Advanced Account</b></li>
       <li>Create your Application under "My Applications", the REDIRECT-URL must be pointing to your local FHEM installation, e.g.<br/>
-      <code>http://localhost:8083/fhem?cmd.Test=set%20hcconn%20auth%20</code><br/></li>
+      <code>http://localhost:8083/fhem?cmd.Test=set%20hcconn%20auth%20&fwcsrf=myToken123</code><br/></li>
       <li>Make sure to include the rest of the URL as shown above. Then define the FHEM HomeConnectConnection device with your API Key and URL:<br/>
       <code>define hcconn HomeConnectConnection API-KEY REDIRECT-URL [simulator]</code><br/></li>
       <li>Click on the link "Home Connect Login" in the device and log in to your account. The simulator will not ask for any credentials.</li>
       <li>Execute the set scanDevices action to create FHEM devices for your appliances.</li>
     </ul>
     <br/>
-	Currently, Home Connect API only supports the Simulator, no real Appliances. So the keyword <b>simulator</b> needs to be added to the definition.
+	Currently, Home Connect API only supports the Simulator instead of your real Appliances unless you are a Home Connect beta tester.
+        So the keyword <b>simulator</b> needs to be added to the definition.
     <br/>
 	If your FHEM server does not run on localhost, please change the REDIRECT-URL accordingly
 	<br/>
 	If you would like to name your HomeConnectConnection differently or if you need to connect to more than one account, the name hcconn may be changed.
-	Make sure to update the new name into your REDIRECT-URL (both in FHEM and Home Connect). If you want to use more than one connection, you will need 
-	to create two different applications in Home Connect. 
+	Make sure to update the new name into your REDIRECT-URL (both in FHEM and Home Connect). If you want to use more than one connection, you can list 
+        both redirect-URLs in your Home Connect Application.
     <br/>
     <b>Troubleshooting tips:</b> If you see errors when logging in, you should check the following points:<ul>
-      <li>Do you have an advanced Home Connect Developer account? If not, set the AccessScope attribute or update your account.</li>
+      <li>Do you have an advanced Home Connect Developer account? If not, set the AccessScope attribute to <code>IdentifyAppliance Monitor</code> or update your account.</li>
+      <li>Did you define a static csrf token and add it to your redirect URL?</li>
       <li>Does the redirect URL point to you FHEM and is it according to the specifications above?</li>
       <li>Is the name of your HomeConnectConnection device hcconn? If not, you need to update the URL accordingly.</li>
       <li>Is the redirect URL identically defined in your Home Connect Developer application and in you FHEM device definition?</li>

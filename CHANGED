@@ -1,3 +1,6 @@
+Jun 12, 2017
+    Add state reading and more documentation to HomeConnectConnection
+
 Jun 07, 2017
     Added a increasing delay when trying to reconnect to the Home Connect event stream
     Removed the "found nothing to read, channel closed" message hoping that the keep-alive works better detecting a missing connection 
