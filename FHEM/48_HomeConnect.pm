@@ -325,19 +325,44 @@ sub HomeConnect_Timer
   my ($hash) = @_;
   my $name   = $hash->{NAME};
 
-  my $retryCounter = defined($hash->{retrycounter}) ? $hash->{retrycounter} : 0;
+  my $updateTimer = AttrVal($name, "updateTimer", 10);
+
+  if (defined $hash->{conn}) {
+    HomeConnect_ReadEventChannel($hash);
+  }
+  # check if still connected
+  if (!defined $hash->{conn}) {
+    # a new connection attempt is needed
+    my $retryCounter = defined($hash->{retrycounter}) ? $hash->{retrycounter} : 0;
+    if ($retryCounter == 0) {
+      # first try
+      HomeConnect_ConnectEventChannel($hash);
+      InternalTimer( gettimeofday() + $updateTimer, "HomeConnect_Timer", $hash, 0);
+    } else {
+      # add an extra wait time
+      InternalTimer( gettimeofday() + (($retryCounter) * 300), "HomeConnect_WaitTimer", $hash, 0);
+    }
+    $retryCounter++;
+    $hash->{retrycounter} = $retryCounter;
+  } else {
+    # all good
+    InternalTimer( gettimeofday() + $updateTimer, "HomeConnect_Timer", $hash, 0);
+  }
+}
+
+#####################################
+sub HomeConnect_WaitTimer
+{
+  my ($hash) = @_;
+  my $name   = $hash->{NAME};
 
   my $updateTimer = AttrVal($name, "updateTimer", 10);
 
   if (!defined $hash->{conn}) {
-    $retryCounter++;
+    # a new connection attempt is needed
     HomeConnect_ConnectEventChannel($hash);
-  } else {
-    $retryCounter = 1;
-    HomeConnect_ReadEventChannel($hash);
   }
-  $hash->{retrycounter} = $retryCounter;
-  InternalTimer( gettimeofday() + (($retryCounter -1) * 60) + $updateTimer, "HomeConnect_Timer", $hash, 0);
+  InternalTimer( gettimeofday() + $updateTimer, "HomeConnect_Timer", $hash, 0);
 }
 
 #####################################
@@ -559,7 +584,7 @@ sub HomeConnect_UpdateStatus
   if (!defined $json) {
     # no program running
     $readings{state} = "Idle";
-    $readings{"BSH.Common.Root.ActiveProgram"} = "None" 
+    $readings{"BSH.Common.Root.ActiveProgram"} = "None"
                              if defined ($readings{"BSH.Common.Root.ActiveProgram"});
 
     $readings{"BSH.Common.Option.RemainingProgramTime"} = "0 seconds"
@@ -606,6 +631,8 @@ sub HomeConnect_ConnectEventChannel
     callback   => \&HomeConnect_HttpConnected
   };
 
+  Log3 $hash->{NAME}, 5, "$hash->{NAME} connecting to event channel";
+
   HttpUtils_NonblockingGet($param);
 
 }
@@ -646,9 +673,13 @@ sub HomeConnect_HttpConnected
   }
   $hdr .= "\r\n";
 
+  Log3 $hash->{NAME}, 5, "$hash->{NAME} sending headers to event channel: $hdr";
+
   syswrite $param->{conn}, $hdr;
   $hash->{conn} = $param->{conn};
   $hash->{eventChannelTimeout} = time();
+
+  Log3 $hash->{NAME}, 5, "$hash->{NAME} connected to event channel";
 
   # the server connection is left open to receive new events
 }
@@ -660,7 +691,8 @@ sub HomeConnect_CloseEventChannel($)
 
   if (defined $hash->{conn}) {
     $hash->{conn}->close();
-    undef $hash->{conn};
+    delete($hash->{conn});
+    Log3 $hash->{NAME}, 5, "$hash->{NAME} disconnected from event channel";
   }
 }
 
@@ -678,80 +710,96 @@ sub HomeConnect_ReadEventChannel($)
     # check for timeout
     if (defined $hash->{eventChannelTimeout} &&
         (time() - $hash->{eventChannelTimeout}) > 130) {
-      Log3 $hash->{NAME}, 2, "$hash->{NAME} channel timeout, two keep alive messages missing";
+      Log3 $hash->{NAME}, 2, "$hash->{NAME} event channel timeout, two keep alive messages missing";
       HomeConnect_CloseEventChannel($hash);
       return undef;
     }
 
     # check channel data availability
+    Log3 $hash->{NAME}, 5, "$hash->{NAME} event channel searching for data";
     my $nfound = select($rout=$rin, undef, undef, 0);
     if($nfound < 0) {
-      Log3 $hash->{NAME}, 2, "$hash->{NAME} channel timeout/error: $!";
+      Log3 $hash->{NAME}, 2, "$hash->{NAME} event channel timeout/error: $!";
       HomeConnect_CloseEventChannel($hash);
       return undef;
     }
 
-    # read data, check if something is there
+    # read data
     if($nfound > 0) {
       my $len = sysread($hash->{conn},$inputbuf,32768);
-      if(!defined($len) || $len == 0) {
-        return undef;
-      }
-    }
 
-    # process data
-    if (defined($inputbuf) && length($inputbuf) > 0) {
+      # check if something was actually read
+      if (defined($len) && $len > 0 && defined($inputbuf) && length($inputbuf) > 0) {
 
-      Log3 $hash->{NAME}, 5, "$hash->{NAME} received $inputbuf";
+        # process data
+        Log3 $hash->{NAME}, 5, "$hash->{NAME} event channel received $inputbuf";
 
-      # reset timeout
-      $hash->{eventChannelTimeout} = time();
+        # reset timeout
+        $hash->{eventChannelTimeout} = time();
 
-      readingsBeginUpdate($hash);
+        readingsBeginUpdate($hash);
 
-      # split data into lines, extract data json elements
-      for (split /^/, $inputbuf) {
-        if (index($_,"data:") == 0) {
-          if (length ($_) < 10) { next };
-          my $json = substr($_,5);
-          Log3 $hash->{NAME}, 5, "$hash->{NAME} found data: $json";
-          my $parsed = $JSON->decode ($json);
-
-          # update readings from json elements
-          my %readings = ();
-          for (my $i = 0; 1; $i++) {
-            my $item = $parsed->{items}[$i];
-            if (!defined $item) { last };
-            my $key = $item->{key};
-            $readings{$key}=(defined $item->{value})?$item->{value}:"-";
-            $readings{$key}.=" ".$item->{unit} if defined $item->{unit};
-            readingsBulkUpdate($hash, $key, $readings{$key});
-            Log3 $hash->{NAME}, 4, "$key = $readings{$key}";
+        # split data into lines,
+        for (split /^/, $inputbuf) {
+          # check for http result line
+          if (index($_,"HTTP/1.1") == 0) {
+            if (substr($_,9,3) ne "200") {
+               Log3 $hash->{NAME}, 2, "$hash->{NAME} event channel received an http error: $_";
+               HomeConnect_CloseEventChannel($hash);
+            } else {
+               # successful connection, reset counter
+               $hash->{retrycounter} = 0;
+            }
           }
-          # define new device state
-          my $state;
-          my $operationState = ReadingsVal($hash->{NAME},"BSH.Common.Status.OperationState","");
-          my $program = ReadingsVal($hash->{NAME},"BSH.Common.Root.ActiveProgram","");
-          if (defined($program) && defined($hash->{commandPrefix}) && length($program) > length($hash->{commandPrefix}) ) {
-            my $prefixLen = length $hash->{commandPrefix};
-            $program = substr($program, $prefixLen);
-          }
-          if ($operationState eq "BSH.Common.EnumType.OperationState.Active" ||
-              $operationState eq "BSH.Common.EnumType.OperationState.Run") {
+          # extract data json elements
+          if (index($_,"data:") == 0) {
+            if (length ($_) < 10) { next };
+            my $json = substr($_,5);
+            Log3 $hash->{NAME}, 5, "$hash->{NAME} event channel data: $json";
+            my $parsed = $JSON->decode ($json);
 
-            $state = "Program $program active";
-            my $pct = ReadingsVal($hash->{NAME},"BSH.Common.Option.ProgramProgress",undef);
-            $state .= " ($pct)" if (defined $pct);
-          } elsif ($operationState eq "BSH.Common.EnumType.OperationState.DelayedStart") {
-            $state = "Delayed start of program $program";
-          } else {
-            $state = "Idle";
+            # update readings from json elements
+            my %readings = ();
+            for (my $i = 0; 1; $i++) {
+              my $item = $parsed->{items}[$i];
+              if (!defined $item) { last };
+              my $key = $item->{key};
+              $readings{$key}=(defined $item->{value})?$item->{value}:"-";
+              $readings{$key}.=" ".$item->{unit} if defined $item->{unit};
+              readingsBulkUpdate($hash, $key, $readings{$key});
+              Log3 $hash->{NAME}, 4, "$key = $readings{$key}";
+            }
+            # define new device state
+            my $state;
+            my $operationState = ReadingsVal($hash->{NAME},"BSH.Common.Status.OperationState","");
+            my $program = ReadingsVal($hash->{NAME},"BSH.Common.Root.ActiveProgram","");
+            if (defined($program) && defined($hash->{commandPrefix}) && length($program) > length($hash->{commandPrefix}) ) {
+              my $prefixLen = length $hash->{commandPrefix};
+              $program = substr($program, $prefixLen);
+            }
+            if ($operationState eq "BSH.Common.EnumType.OperationState.Active" ||
+                $operationState eq "BSH.Common.EnumType.OperationState.Run") {
+
+              $state = "Program $program active";
+              my $pct = ReadingsVal($hash->{NAME},"BSH.Common.Option.ProgramProgress",undef);
+              $state .= " ($pct)" if (defined $pct);
+            } elsif ($operationState eq "BSH.Common.EnumType.OperationState.DelayedStart") {
+              $state = "Delayed start of program $program";
+            } else {
+              $state = "Idle";
+            }
+            readingsBulkUpdate($hash, "state", $state) if ($hash->{STATE} ne $state);
           }
-          readingsBulkUpdate($hash, "state", $state) if ($hash->{STATE} ne $state);
         }
+        readingsEndUpdate($hash, 1);
+      } else {
+        Log3 $hash->{NAME}, 5, "$hash->{NAME} event channel read failed";
       }
-      readingsEndUpdate($hash, 1);
+    } else {
+      Log3 $hash->{NAME}, 5, "$hash->{NAME} event channel received no data";
     }
+  } else {
+    Log3 $hash->{NAME}, 5, "$hash->{NAME} event channel is not connected";
   }
 }
 

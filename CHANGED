@@ -1,3 +1,6 @@
+Jun 19, 2017
+    More debug logging and improved event stream connection retry handling
+
 Jun 12, 2017
     Add state reading and more documentation to HomeConnectConnection
 
