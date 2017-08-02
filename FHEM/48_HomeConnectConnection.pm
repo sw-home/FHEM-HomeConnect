@@ -175,13 +175,14 @@ sub HomeConnectConnection_GetAuthToken
 
   if( $err ) {
     Log3 $name, 2, "$name http request failed: $err";
+    return $err;
   } elsif( $data ) {
     Log3 $name, 2, "$name AuthTokenResponse $data";
 
     $data =~ s/\n//g;
     if( $data !~ m/^{.*}$/m ) {
       Log3 $name, 2, "$name invalid json detected: >>$data<<";
-      return undef;
+      return "Invalid get token response";
     }
   }
 

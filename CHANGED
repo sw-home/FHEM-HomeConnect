@@ -1,3 +1,9 @@
+Aug 2, 2017
+	Fixed a Perl warning, thanks to n8falke.de
+	Fixed handling of event stream http errors
+	Write less log messages in default levels
+	Fixed exception handling when logging in
+
 Jun 19, 2017
     More debug logging and improved event stream connection retry handling
 
@@ -9,16 +15,13 @@ Jun 07, 2017
     Removed the "found nothing to read, channel closed" message hoping that the keep-alive works better detecting a missing connection 
 
 Nov 29, 2016
-
 	Added reading and updating of appliance settings
 	Improved event stream reading
 
 Nov 28, 2016
-
 	Added this CHANGED file
 	
 Nov 21, 2016
-
     Added timeout feature to check for missing keep alive messages
 
 Nov 20, 2016

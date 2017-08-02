@@ -76,7 +76,7 @@ sub HomeConnect_Set($@)
   my $availableSets="";
 
   if (defined($hash->{READINGS})) {
-    foreach my $reading (keys $hash->{READINGS}) {
+    foreach my $reading (keys %{$hash->{READINGS}}) {
       if (index ($reading,".Option.")>0 && grep( /^$reading$/, @HomeConnect_SettablePgmOptions )) {
         $availableOpts .= " ".$reading;
       }
@@ -110,7 +110,7 @@ sub HomeConnect_Set($@)
   shift @a;
   my $command = shift @a;
 
-  Log3 $hash->{NAME}, 2, "set command: $command";
+  Log3 $hash->{NAME}, 3, "set command: $command";
 
   ## Start a program
   if($command eq "startProgram") {
@@ -265,7 +265,7 @@ sub HomeConnect_Init($)
       $hash->{brand} = $appliance->{brand};
       $hash->{vib} = $appliance->{vib};
       $hash->{connected} = $appliance->{connected};
-      Log3 $hash->{NAME}, 2, "$hash->{NAME} defined as HomeConnect $hash->{type} $hash->{brand} $hash->{vib}";
+      Log3 $hash->{NAME}, 3, "$hash->{NAME} defined as HomeConnect $hash->{type} $hash->{brand} $hash->{vib}";
 
       my $icon = $HomeConnect_Iconmap{$appliance->{type}};
 
@@ -746,6 +746,7 @@ sub HomeConnect_ReadEventChannel($)
             if (substr($_,9,3) ne "200") {
                Log3 $hash->{NAME}, 2, "$hash->{NAME} event channel received an http error: $_";
                HomeConnect_CloseEventChannel($hash);
+               return undef;
             } else {
                # successful connection, reset counter
                $hash->{retrycounter} = 0;
