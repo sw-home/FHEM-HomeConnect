@@ -3,7 +3,7 @@
 
 # $Id: $
 
-        Version 0.1
+        Version 0.9
 
 =head1 SYNOPSIS
         Bosch Siemens Home Connect Modul for FHEM
@@ -186,7 +186,11 @@ sub HomeConnectConnection_GetAuthToken
     }
   }
 
-  my $json = $JSON->decode($data);
+  my $json = eval {$JSON->decode($data)};
+  if($@){
+    Log3 $name, 2, "($name) - JSON error requesting tokens: $@";
+    return;
+  }
 
   if( $json->{error} ) {
     $hash->{lastError} = $json->{error};
@@ -274,35 +278,38 @@ sub HomeConnectConnection_RefreshToken($)
       Log3 $name, 2, "$name: invalid json detected: >>$data<<";
 
     } else {
+      my $json = eval {decode_json($data)};
+      if($@){
+        Log3 $name, 2, "$name JSON error while reading refreshed token";
+      } else {
 
-      my $json = decode_json($data);
+        if( $json->{error} ) {
+          $hash->{lastError} = $json->{error};
+        }
 
-      if( $json->{error} ) {
-        $hash->{lastError} = $json->{error};
-      }
+        setKeyValue($conn->{NAME}."_accessToken",$json->{access_token});
 
-      setKeyValue($conn->{NAME}."_accessToken",$json->{access_token});
-
-      if( $json->{access_token} ) {
-        $conn->{STATE} = "Connected";
-        $conn->{expires_at} = gettimeofday();
-        $conn->{expires_at} += $json->{expires_in};
-        undef $conn->{refreshFailCount};
-        readingsBeginUpdate($conn);
-        readingsBulkUpdate($conn, "tokenExpiry", scalar localtime $conn->{expires_at});
-        readingsBulkUpdate($conn, "state", $conn->{STATE});
-        readingsEndUpdate($conn, 1);
-        RemoveInternalTimer($conn);
-        InternalTimer(gettimeofday()+$json->{expires_in}*3/4,
-          "HomeConnectConnection_RefreshTokenTimer", $conn, 0);
-        if (!$gotToken) {
-          foreach my $key ( keys %defs ) {
-            if ($defs{$key}->{TYPE} eq "HomeConnect") {
-              fhem "set $key init";
+        if( $json->{access_token} ) {
+          $conn->{STATE} = "Connected";
+          $conn->{expires_at} = gettimeofday();
+          $conn->{expires_at} += $json->{expires_in};
+          undef $conn->{refreshFailCount};
+          readingsBeginUpdate($conn);
+          readingsBulkUpdate($conn, "tokenExpiry", scalar localtime $conn->{expires_at});
+          readingsBulkUpdate($conn, "state", $conn->{STATE});
+          readingsEndUpdate($conn, 1);
+          RemoveInternalTimer($conn);
+          InternalTimer(gettimeofday()+$json->{expires_in}*3/4,
+            "HomeConnectConnection_RefreshTokenTimer", $conn, 0);
+          if (!$gotToken) {
+            foreach my $key ( keys %defs ) {
+              if ($defs{$key}->{TYPE} eq "HomeConnect") {
+                fhem "set $key init";
+              }
             }
           }
+          return undef;
         }
-        return undef;
       }
     }
   }
@@ -343,15 +350,18 @@ sub HomeConnectConnection_AutocreateDevices
     return "Failed to connect to HomeConnectConnection API, see log for details";
   }
 
-  my $appliances = decode_json ($applianceJson);
-
-  for (my $i = 0; 1; $i++) {
-    my $appliance = $appliances->{data}->{homeappliances}[$i];
-    if (!defined $appliance) { last };
-    if (!defined $defs{$appliance->{vib}}) {
-      fhem ("define $appliance->{vib} HomeConnect $hash->{NAME} $appliance->{haId}");
+  my $appliances = eval {decode_json ($applianceJson)};
+  if($@){
+    Log3 $hash->{NAME}, 2, "$hash->{NAME} JSON error while reading appliances";
+  } else {
+    for (my $i = 0; 1; $i++) {
+      my $appliance = $appliances->{data}->{homeappliances}[$i];
+      if (!defined $appliance) { last };
+      if (!defined $defs{$appliance->{vib}}) {
+        fhem ("define $appliance->{vib} HomeConnect $hash->{NAME} $appliance->{haId}");
+      }
     }
-  }
+  };
 
   return undef;
 }

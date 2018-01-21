@@ -3,7 +3,7 @@
 
 # $Id: $
 
-        Version 0.1
+        Version 0.9
 
 =head1 SYNOPSIS
         Bosch Siemens Home Connect Modul for FHEM
@@ -137,11 +137,15 @@ sub HomeConnect_Set($@)
     my $URL = "/api/homeappliances/$haId/programs/active";
     my $data = HomeConnectConnection_putrequest($hash,$URL,"{\"data\":{\"key\":\"$cmdPrefix$pgm\",\"options\":[$options]}}");
     if (defined $data && length ($data) >0) {
-       my $json = $JSON->decode($data);
-       if( $json->{error} ) {
+       my $json = eval {$JSON->decode($data)};
+       if($@){
+         Log3 $hash->{NAME}, 2, "JSON error while starting program: $@";
+         return;
+       }
+       if ($json->{error} ) {
          if (defined $json->{error}->{description}) {
            $rc = $json->{error}->{description};
-         } else {  
+         } else {
            $rc = $json->{error};
          }
        }
@@ -254,7 +258,11 @@ sub HomeConnect_Init($)
     return "Failed to connect to HomeConnect API, see log for details";
   }
 
-  my $appliances = $JSON->decode ($applianceJson);
+  my $appliances = eval {$JSON->decode ($applianceJson)};
+  if($@){
+    Log3 $hash->{NAME}, 3, "$hash->{NAME} - JSON error requesting appliances: $@";
+    return "$hash->{NAME} init failed";
+  }
 
   for (my $i = 0; 1; $i++) {
     my $appliance = $appliances->{data}->{homeappliances}[$i];
@@ -378,15 +386,18 @@ sub HomeConnect_GetProgramOptions
   my $json = HomeConnectConnection_request($hash,$URL);
 
   if (defined $json) {
-    my $parsed = $JSON->decode ($json);
+    my $parsed = eval {$JSON->decode ($json)};
+    if($@){
+      Log3 $hash->{NAME}, 3, "$hash->{NAME} - JSON error requesting options: $@";
+    } else {
+      HomeConnect_parseOptionsToHash2(\%readings,$parsed);
 
-    HomeConnect_parseOptionsToHash2(\%readings,$parsed);
-
-    readingsBeginUpdate($hash);
-    for my $get (keys %readings) {
-      readingsBulkUpdate($hash, $get, $readings{$get});
+      readingsBeginUpdate($hash);
+      for my $get (keys %readings) {
+        readingsBulkUpdate($hash, $get, $readings{$get});
+      }
+      readingsEndUpdate($hash, 1);
     }
-    readingsEndUpdate($hash, 1);
   }
 }
 
@@ -403,15 +414,18 @@ sub HomeConnect_GetSettings
   my $json = HomeConnectConnection_request($hash,$URL);
 
   if (defined $json) {
-    my $parsed = $JSON->decode ($json);
+    my $parsed = eval {$JSON->decode ($json)};
+    if($@){
+      Log3 $hash->{NAME}, 3, "$hash->{NAME} - JSON error requesting settings: $@";
+    } else {
+      HomeConnect_parseSettingsToHash(\%readings,$parsed);
 
-    HomeConnect_parseSettingsToHash(\%readings,$parsed);
-
-    readingsBeginUpdate($hash);
-    for my $get (keys %readings) {
-      readingsBulkUpdate($hash, $get, $readings{$get});
-    }
-    readingsEndUpdate($hash, 1);
+      readingsBeginUpdate($hash);
+      for my $get (keys %readings) {
+        readingsBulkUpdate($hash, $get, $readings{$get});
+      }
+      readingsEndUpdate($hash, 1);
+    };
   }
 }
 
@@ -447,25 +461,30 @@ sub HomeConnect_GetPrograms
   my $json = HomeConnectConnection_request($hash,$URL);
 
   if (defined $json) {
-    my $parsed = $JSON->decode ($json);
-    for (my $i = 0; 1; $i++) {
-      my $programline = $parsed->{data}->{programs}[$i];
-      if (!defined $programline) { last };
-      push (@pgms, $programline->{key});
-      $prefix = HomeConnect_checkPrefix($prefix, $programline->{key});
-    }
-    #### command beautyfication: remove a common prefix
-    my $prefixLen = length $prefix;
-    foreach my $program (@pgms) {
-      if ($programs ne "") {
-        $programs .= ",";
+    my $parsed = eval {$JSON->decode ($json)};
+    if($@){
+      Log3 $hash->{NAME}, 3, "$hash->{NAME} - JSON error requesting programs: $@";
+    } else {
+      for (my $i = 0; 1; $i++) {
+        my $programline = $parsed->{data}->{programs}[$i];
+        if (!defined $programline) { last };
+        push (@pgms, $programline->{key});
+        $prefix = HomeConnect_checkPrefix($prefix, $programline->{key});
       }
-      $programs .= substr($program, $prefixLen);
-    }
-    $hash->{commandPrefix} = $prefix;
-    $hash->{programs} = $programs;
+      #### command beautyfication: remove a common prefix
+      my $prefixLen = length $prefix;
+      foreach my $program (@pgms) {
+        if ($programs ne "") {
+          $programs .= ",";
+        }
+        $programs .= substr($program, $prefixLen);
+      }
+      $hash->{commandPrefix} = $prefix;
+      $hash->{programs} = $programs;
+    };
   }
 }
+
 #####################################
 sub HomeConnect_checkPrefix
 {
@@ -557,7 +576,12 @@ sub HomeConnect_UpdateStatus
     return undef;
   }
 
-  my $parsed = $JSON->decode ($json);
+  my $parsed = eval{$JSON->decode ($json)};
+  if($@){
+    Log3 $hash->{NAME}, 3, "$hash->{NAME} - JSON error requesting status: $@";
+    $hash->{STATE} = "Unknown";
+    return;
+  }
 
   for (my $i = 0; 1; $i++) {
     my $statusline = $parsed->{data}->{status}[$i];
@@ -593,14 +617,18 @@ sub HomeConnect_UpdateStatus
     $readings{"BSH.Common.Option.ProgramProgress"} = "0 %"
                              if defined ($readings{"BSH.Common.Option.ProgramProgress"});
   } else {
-    my $parsed = $JSON->decode ($json);
-    $readings{"BSH.Common.Root.ActiveProgram"} = $parsed->{data}->{key};
-    HomeConnect_parseOptionsToHash2(\%readings,$parsed);
-
-    $readings{state} = "Program active";
-
-    $readings{state} .= " (".$readings{"BSH.Common.Option.ProgramProgress"} .")"
+    my $parsed = eval {$JSON->decode ($json)};
+    if($@){
+      Log3 $hash->{NAME}, 3, "$hash->{NAME} - JSON error requesting status: $@";
+    } else {
+      $readings{"BSH.Common.Root.ActiveProgram"} = $parsed->{data}->{key};
+      HomeConnect_parseOptionsToHash2(\%readings,$parsed);
+  
+      $readings{state} = "Program active";
+  
+      $readings{state} .= " (".$readings{"BSH.Common.Option.ProgramProgress"} .")"
                              if defined $readings{"BSH.Common.Option.ProgramProgress"};
+    };
   }
 
   #### Update Readings
@@ -628,6 +656,8 @@ sub HomeConnect_ConnectEventChannel
     timeout    => 10,
     noshutdown => 1,
     noConn2    => 1,
+    httpversion=> "1.1",
+    keepalive  => 1,
     callback   => \&HomeConnect_HttpConnected
   };
 
@@ -757,18 +787,22 @@ sub HomeConnect_ReadEventChannel($)
             if (length ($_) < 10) { next };
             my $json = substr($_,5);
             Log3 $hash->{NAME}, 5, "$hash->{NAME} event channel data: $json";
-            my $parsed = $JSON->decode ($json);
 
-            # update readings from json elements
-            my %readings = ();
-            for (my $i = 0; 1; $i++) {
-              my $item = $parsed->{items}[$i];
-              if (!defined $item) { last };
-              my $key = $item->{key};
-              $readings{$key}=(defined $item->{value})?$item->{value}:"-";
-              $readings{$key}.=" ".$item->{unit} if defined $item->{unit};
-              readingsBulkUpdate($hash, $key, $readings{$key});
-              Log3 $hash->{NAME}, 4, "$key = $readings{$key}";
+            my $parsed = eval {$JSON->decode ($json)};
+            if($@){
+              Log3 $hash->{NAME}, 2, "$hash->{NAME} - JSON error reading from event channel";
+            } else {
+              # update readings from json elements
+              my %readings = ();
+              for (my $i = 0; 1; $i++) {
+                my $item = $parsed->{items}[$i];
+                if (!defined $item) { last };
+                my $key = $item->{key};
+                $readings{$key}=(defined $item->{value})?$item->{value}:"-";
+                $readings{$key}.=" ".$item->{unit} if defined $item->{unit};
+                readingsBulkUpdate($hash, $key, $readings{$key});
+                Log3 $hash->{NAME}, 4, "$key = $readings{$key}";
+              }
             }
             # define new device state
             my $state;

@@ -1,2 +1,2 @@
-UPD 2017-08-02_10:35:25 26838 FHEM/48_HomeConnect.pm
-UPD 2017-07-11_08:45:50 17984 FHEM/48_HomeConnectConnection.pm
+UPD 2018-01-21_22:24:10 28914 FHEM/48_HomeConnect.pm
+UPD 2018-01-21_22:22:23 18374 FHEM/48_HomeConnectConnection.pm

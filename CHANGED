@@ -1,3 +1,6 @@
+Jan 21, 2018
+    Added error handling for invalid JSON strings
+    
 Aug 2, 2017
 	Fixed a Perl warning, thanks to n8falke.de
 	Fixed handling of event stream http errors
