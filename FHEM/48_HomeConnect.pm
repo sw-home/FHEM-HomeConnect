@@ -1,8 +1,6 @@
 =head1
         48_HomeConnect.pm
 
-# $Id: $
-
         Version 0.9
 
 =head1 SYNOPSIS
@@ -313,18 +311,7 @@ sub HomeConnect_Get($@)
   my $get = $args[1];
   my $val = $hash->{Invalid};
 
-#  if (defined($hash->{READINGS}{$get})) {
-#    $val = $hash->{READINGS}{$get}{VAL};
-#  } else {
-#    my @cList = keys ($hash->{READINGS});
-#    return "HomeConnect_Get: no such reading: $get, choose one of " . join(" ", @cList);
-#  }
-
-  return "HomeConnect_Get: no such reading: $get, choose one of dummy";
-
-  Log3 $hash->{NAME}, 3, "$args[0] $get => $val";
-
-  return $val;
+  return "HomeConnect_Get: not supported";
 }
 
 #####################################
