@@ -1,3 +1,6 @@
+Jan 25, 2018
+	fix handling of refresh token
+	
 Jan 21, 2018
     Added error handling for invalid JSON strings
     

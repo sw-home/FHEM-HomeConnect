@@ -287,7 +287,8 @@ sub HomeConnectConnection_RefreshToken($)
           $hash->{lastError} = $json->{error};
         }
 
-        setKeyValue($conn->{NAME}."_accessToken",$json->{access_token});
+        setKeyValue($conn->{NAME}."_accessToken",  $json->{access_token});
+        setKeyValue($conn->{NAME}."_refreshToken", $json->{refresh_token});
 
         if( $json->{access_token} ) {
           $conn->{STATE} = "Connected";
