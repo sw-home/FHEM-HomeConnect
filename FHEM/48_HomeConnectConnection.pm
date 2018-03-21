@@ -3,7 +3,7 @@
 
 # $Id: $
 
-        Version 0.9
+        Version 1.0
 
 =head1 SYNOPSIS
         Bosch Siemens Home Connect Modul for FHEM
@@ -90,7 +90,7 @@ sub HomeConnectConnection_Define($$)
     $hash->{redirect_uri} = $a[3];
     if (int(@a) > 4 && "simulator" eq $a[4]) {
       $hash->{simulator} = "1";
-      $hash->{api_uri} = "https://developer.home-connect.com";
+      $hash->{api_uri} = "https://simulator.home-connect.com";
     }
   }
 #  else {
@@ -426,7 +426,7 @@ sub HomeConnectConnection_request
   my $param = {
     url        => $URL,
     hash       => $hash,
-    timeout    => 3,
+    timeout    => 5,
     noshutdown => 1,
     header     => { "Accept" => "application/vnd.bsh.sdk.v1+json", "Authorization" => "Bearer $token" }
   };
@@ -468,7 +468,7 @@ sub HomeConnectConnection_putrequest
     url        => $URL,
     method     => "PUT",
     hash       => $hash,
-    timeout    => 3,
+    timeout    => 5,
     noshutdown => 1,
     header     => { "Accept" => "application/vnd.bsh.sdk.v1+json",
                     "Authorization" => "Bearer $token",
@@ -514,7 +514,7 @@ sub HomeConnectConnection_delrequest
     url        => $URL,
     method     => "DELETE",
     hash       => $hash,
-    timeout    => 3,
+    timeout    => 5,
     noshutdown => 1,
     header     => { "Accept" => "application/vnd.bsh.sdk.v1+json", "Authorization" => "Bearer $token" }
   };

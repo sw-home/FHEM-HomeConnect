@@ -1,3 +1,10 @@
+Mar 21, 2018 Version 1.0
+	fixed simulator mode (API URL had changed)
+	longer timeouts for synchronous API requests to improve work with slow simulator
+	quicker processing of appliance status changes (important for ovens and coffee makers)
+	fixed setting of non-numeric program options
+	changed model of starting programs, first select program, then check options and start
+
 Jan 25, 2018
 	fix handling of refresh token
 	

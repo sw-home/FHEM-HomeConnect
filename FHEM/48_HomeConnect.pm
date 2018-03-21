@@ -1,7 +1,7 @@
 =head1
         48_HomeConnect.pm
 
-        Version 0.9
+        Version 1.0
 
 =head1 SYNOPSIS
         Bosch Siemens Home Connect Modul for FHEM
@@ -21,6 +21,8 @@ use strict;
 use warnings;
 use JSON;
 use Switch;
+use Scalar::Util qw(looks_like_number);
+
 require 'HttpUtils.pm';
 
 ##############################################
@@ -34,9 +36,12 @@ my %HomeConnect_Iconmap = (
 );
 
 my @HomeConnect_SettablePgmOptions = (
-  "Cooking.Oven.Option.SetpointTemperature",
   "BSH.Common.Option.Duration",
-  "BSH.Common.Option.StartInRelative"
+  "BSH.Common.Option.StartInRelative",
+  "Cooking.Oven.Option.SetpointTemperature",
+  "ConsumerProducts.CoffeeMaker.Option.FillQuantity",
+  "ConsumerProducts.CoffeeMaker.Option.BeanAmount",
+  "ConsumerProducts.CoffeeMaker.Option.CoffeeTemperature"
 );
 
 ##############################################
@@ -88,17 +93,14 @@ sub HomeConnect_Set($@)
     if (Value($hash->{hcconn}) ne "Logged in") {
       $availableCmds = "init";
     }
-  } elsif ($pgmRunning) {
-    $availableCmds = "stopProgram";
-    $availableCmds.=$availableOpts if (length($availableOpts)>0);
   } else {
-    if ($remoteStartAllowed) {
-      $availableCmds = "startProgram:$programs requestProgramOptions:$programs";
-      $availableCmds.=$availableOpts if (length($availableOpts)>0);
-    } else {
-      $availableCmds = "startProgram:RemoteStartNotEnabled";
+    if ($pgmRunning) {
+      $availableCmds = "stopProgram";
+    } elsif ($remoteStartAllowed) {
+      $availableCmds = "startProgram";
     }
-    $availableCmds.=" requestSettings";
+    $availableCmds.=" requestSettings BSH.Common.Root.SelectedProgram:$programs requestProgramOptions:$programs";
+    $availableCmds.=$availableOpts if (length($availableOpts)>0);
     $availableCmds.=$availableSets if (length($availableSets)>0);
   }
 
@@ -117,6 +119,9 @@ sub HomeConnect_Set($@)
     return "Please enable remote start on your appliance to start a program" if (!$remoteStartAllowed);
 
     my $pgm = shift @a;
+    if (!defined $pgm) {
+      $pgm = ReadingsVal($hash->{NAME},"BSH.Common.Root.SelectedProgram",undef);
+    }
     if (!defined $pgm || index($programs,$pgm) == -1) {
       return "Unknown program $pgm, choose one of $programs";
     }
@@ -127,7 +132,11 @@ sub HomeConnect_Set($@)
       if (defined $optval) {
         my @a = split("[ \t][ \t]*", $optval);
         $options .= "," if (length($options)>0);
-        $options .= "{\"key\":\"$key\",\"value\":$a[0]";
+        if (looks_like_number($a[0])) {
+          $options .= "{\"key\":\"$key\",\"value\":$a[0]";
+        } else {
+          $options .= "{\"key\":\"$key\",\"value\":\"$a[0]\"";
+        }
         $options .= ",\"unit\":\"$a[1]\"" if defined $a[1];
         $options .= "}";
       }
@@ -208,6 +217,14 @@ sub HomeConnect_Set($@)
   if($command eq "init") {
     return HomeConnect_Init($hash);
   }
+  ## Select a program
+  if($command eq "BSH.Common.Root.SelectedProgram") {
+    my $pgm = shift @a;
+    if (!defined $pgm || index($programs,$pgm) == -1) {
+      return "Unknown program $pgm, choose one of $programs";
+    }
+    HomeConnect_SelectProgram($hash,$pgm);
+  }
   ## Request options for selected program
   if($command eq "requestProgramOptions") {
     my $pgm = shift @a;
@@ -219,6 +236,7 @@ sub HomeConnect_Set($@)
   ## Request appliance settings
   if($command eq "requestSettings") {
     HomeConnect_GetSettings($hash);
+    HomeConnect_GetPrograms($hash);
   }
   return $rc;
 }
@@ -277,7 +295,7 @@ sub HomeConnect_Init($)
 
       $attr{$hash->{NAME}}{icon} = $icon if (!defined $attr{$hash->{NAME}}{icon} && defined $icon);
       $attr{$hash->{NAME}}{alias} = $hash->{aliasname} if (!defined $attr{$hash->{NAME}}{alias} && defined $hash->{aliasname});
-      $attr{$hash->{NAME}}{webCmd} = "startProgram:stopProgram" if (!defined $attr{$hash->{NAME}}{webCmd});
+      $attr{$hash->{NAME}}{webCmd} = "BSH.Common.Root.SelectedProgram:startProgram:stopProgram" if (!defined $attr{$hash->{NAME}}{webCmd});
 
       HomeConnect_GetPrograms($hash);
       HomeConnect_UpdateStatus($hash);
@@ -320,7 +338,7 @@ sub HomeConnect_Timer
   my ($hash) = @_;
   my $name   = $hash->{NAME};
 
-  my $updateTimer = AttrVal($name, "updateTimer", 10);
+  my $updateTimer = AttrVal($name, "updateTimer", 5);
 
   if (defined $hash->{conn}) {
     HomeConnect_ReadEventChannel($hash);
@@ -358,6 +376,34 @@ sub HomeConnect_WaitTimer
     HomeConnect_ConnectEventChannel($hash);
   }
   InternalTimer( gettimeofday() + $updateTimer, "HomeConnect_Timer", $hash, 0);
+}
+
+#####################################
+sub HomeConnect_SelectProgram
+{
+  my ($hash, $program) = @_;
+  my %readings = ();
+  my $haId = $hash->{haId};
+  my $cmdPrefix = $hash->{commandPrefix};
+  my $JSON = JSON->new->utf8(0)->allow_nonref;
+
+  my $URL = "/api/homeappliances/$haId/programs/selected";
+  my $json = HomeConnectConnection_putrequest($hash,$URL,"{\"data\":{\"key\":\"$cmdPrefix$program\"}}");
+
+  if ($json ne "") {
+    my $parsed = eval {$JSON->decode ($json)};
+    if($@){
+      Log3 $hash->{NAME}, 3, "$hash->{NAME} - JSON error selecting program: $@";
+    } else {
+      if ($json->{error} ) {
+        if (defined $json->{error}->{description}) {
+          return $json->{error}->{description};
+        } else {
+          return $json->{error};
+        }
+      }
+    }
+  }
 }
 
 #####################################
@@ -726,23 +772,26 @@ sub HomeConnect_ReadEventChannel($)
 
     # check for timeout
     if (defined $hash->{eventChannelTimeout} &&
-        (time() - $hash->{eventChannelTimeout}) > 130) {
+        (time() - $hash->{eventChannelTimeout}) > 140) {
       Log3 $hash->{NAME}, 2, "$hash->{NAME} event channel timeout, two keep alive messages missing";
       HomeConnect_CloseEventChannel($hash);
       return undef;
     }
 
-    # check channel data availability
-    Log3 $hash->{NAME}, 5, "$hash->{NAME} event channel searching for data";
-    my $nfound = select($rout=$rin, undef, undef, 0);
-    if($nfound < 0) {
-      Log3 $hash->{NAME}, 2, "$hash->{NAME} event channel timeout/error: $!";
-      HomeConnect_CloseEventChannel($hash);
-      return undef;
-    }
-
     # read data
-    if($nfound > 0) {
+    while($hash->{conn}->fileno()) {
+      # check channel data availability
+      Log3 $hash->{NAME}, 5, "$hash->{NAME} event channel searching for data";
+      my $nfound = select($rout=$rin, undef, undef, 0);
+      if($nfound < 0) {
+        Log3 $hash->{NAME}, 2, "$hash->{NAME} event channel timeout/error: $!";
+        HomeConnect_CloseEventChannel($hash);
+        return undef;
+      }
+      if($nfound == 0) {
+        last;
+      }
+
       my $len = sysread($hash->{conn},$inputbuf,32768);
 
       # check if something was actually read
@@ -787,6 +836,13 @@ sub HomeConnect_ReadEventChannel($)
                 my $key = $item->{key};
                 $readings{$key}=(defined $item->{value})?$item->{value}:"-";
                 $readings{$key}.=" ".$item->{unit} if defined $item->{unit};
+
+                if ($key eq "BSH.Common.Root.SelectedProgram" && 
+                    defined($hash->{commandPrefix}) && length($readings{$key}) > length($hash->{commandPrefix}) ) {
+                  my $prefixLen = length $hash->{commandPrefix};
+                  $readings{$key} = substr($readings{$key}, $prefixLen);
+                }
+
                 readingsBulkUpdate($hash, $key, $readings{$key});
                 Log3 $hash->{NAME}, 4, "$key = $readings{$key}";
               }
@@ -817,9 +873,8 @@ sub HomeConnect_ReadEventChannel($)
       } else {
         Log3 $hash->{NAME}, 5, "$hash->{NAME} event channel read failed";
       }
-    } else {
-      Log3 $hash->{NAME}, 5, "$hash->{NAME} event channel received no data";
-    }
+    } 
+    Log3 $hash->{NAME}, 5, "$hash->{NAME} event channel received no more data";
   } else {
     Log3 $hash->{NAME}, 5, "$hash->{NAME} event channel is not connected";
   }
@@ -854,9 +909,12 @@ sub HomeConnect_ReadEventChannel($)
   <a name="HomeConnect_set"></a>
   <b>Set</b>
   <ul>
+    <li>BSH.Common.Root.SelectedProgram<br>
+      Select a program on the appliance. A program name must be given as first parameter. 
+      This prepares the appliance for a program start and presets the program options with sensible defaults.
     <li>startProgram<br>
-      Start a program on the appliance. The programs name must be given as first parameter.
-      The program will be started with specific options.
+      Start a program on the appliance. The program currently selected on the appliance will be started by default.
+      A program name can be given as first parameter. The program will be started with specific options.
       </li>
     <li>stopProgram<br>
       Stop the running program on the appliance.
