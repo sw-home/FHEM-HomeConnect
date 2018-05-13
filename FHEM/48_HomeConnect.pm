@@ -53,7 +53,7 @@ sub HomeConnect_Initialize($)
   $hash->{DefFn}     = "HomeConnect_Define";
   $hash->{GetFn}     = "HomeConnect_Get";
   $hash->{AttrList}  = "disable:0,1 " .
-                       "updateTimer" .
+                       "updateTimer " .
                        $readingFnAttributes;
     return;
 }
