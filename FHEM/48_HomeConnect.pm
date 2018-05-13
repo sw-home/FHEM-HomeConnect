@@ -52,7 +52,10 @@ sub HomeConnect_Initialize($)
   $hash->{SetFn}     = "HomeConnect_Set";
   $hash->{DefFn}     = "HomeConnect_Define";
   $hash->{GetFn}     = "HomeConnect_Get";
-  $hash->{AttrList}  = "updateTimer";
+  $hash->{AttrList}  = "disable:0,1 " .
+                       "updateTimer" .
+                       $readingFnAttributes;
+    return;
 }
 
 ###################################
@@ -151,8 +154,10 @@ sub HomeConnect_Set($@)
        }
        if ($json->{error} ) {
          if (defined $json->{error}->{description}) {
+           Log3 $hash->{NAME}, 3, "$hash->{NAME} - error while starting program: $json->{error}->{description}";
            $rc = $json->{error}->{description};
          } else {
+           Log3 $hash->{NAME}, 3, "$hash->{NAME} - error while starting program: $json->{error}";
            $rc = $json->{error};
          }
        }
@@ -194,6 +199,7 @@ sub HomeConnect_Set($@)
     if (!defined $setval) {
       return "Please enter a new setting value";
     }
+    $setval = "\"$setval\"" if (!looks_like_number($setval));
     # workaround: fix booleans
     $setval = "1" eq $setval ? "true":"false" if (!defined $setunit && ("0" eq $setval || "1" eq $setval));
 
@@ -223,7 +229,7 @@ sub HomeConnect_Set($@)
     if (!defined $pgm || index($programs,$pgm) == -1) {
       return "Unknown program $pgm, choose one of $programs";
     }
-    HomeConnect_SelectProgram($hash,$pgm);
+    $rc = HomeConnect_SelectProgram($hash,$pgm);
   }
   ## Request options for selected program
   if($command eq "requestProgramOptions") {
@@ -340,11 +346,11 @@ sub HomeConnect_Timer
 
   my $updateTimer = AttrVal($name, "updateTimer", 5);
 
-  if (defined $hash->{conn}) {
+  if (defined $hash->{conn} and AttrVal($name, "disable", 0) == 0) {
     HomeConnect_ReadEventChannel($hash);
   }
   # check if still connected
-  if (!defined $hash->{conn}) {
+  if (!defined $hash->{conn} and AttrVal($name, "disable", 0) == 0) {
     # a new connection attempt is needed
     my $retryCounter = defined($hash->{retrycounter}) ? $hash->{retrycounter} : 0;
     if ($retryCounter == 0) {
@@ -390,16 +396,19 @@ sub HomeConnect_SelectProgram
   my $URL = "/api/homeappliances/$haId/programs/selected";
   my $json = HomeConnectConnection_putrequest($hash,$URL,"{\"data\":{\"key\":\"$cmdPrefix$program\"}}");
 
-  if ($json ne "") {
+  if (defined $json && length ($json) >0) {
     my $parsed = eval {$JSON->decode ($json)};
     if($@){
-      Log3 $hash->{NAME}, 3, "$hash->{NAME} - JSON error selecting program: $@";
+      Log3 $hash->{NAME}, 2, "$hash->{NAME} - JSON error selecting program: $@";
+      return;
     } else {
-      if ($json->{error} ) {
-        if (defined $json->{error}->{description}) {
-          return $json->{error}->{description};
+      if ($parsed->{error} ) {
+        if (defined $parsed->{error}->{description}) {
+          Log3 $hash->{NAME}, 3, "$hash->{NAME} - error selecting program: $parsed->{error}->{description}";
+          return $parsed->{error}->{description};
         } else {
-          return $json->{error};
+          Log3 $hash->{NAME}, 3, "$hash->{NAME} - error selecting program: $parsed->{error}";
+          return $parsed->{error};
         }
       }
     }
@@ -778,11 +787,21 @@ sub HomeConnect_ReadEventChannel($)
       return undef;
     }
 
+   my $count = 0;
+
     # read data
     while($hash->{conn}->fileno()) {
+      # loop monitoring
+      $count  = $count + 1;
+      if ($count > 100){
+        Log3 $hash->{NAME}, 2, "$hash->{NAME} event channel fatal error: infinite loop";
+        last;
+      }
       # check channel data availability
-      Log3 $hash->{NAME}, 5, "$hash->{NAME} event channel searching for data";
+      my $tmp = $hash->{conn}->fileno();
       my $nfound = select($rout=$rin, undef, undef, 0);
+      Log3 $hash->{NAME}, 5, "$hash->{NAME} event channel searching for data, fileno:\"$tmp\", nfound:\"$nfound\", loopCounter:\"$count\"";
+      
       if($nfound < 0) {
         Log3 $hash->{NAME}, 2, "$hash->{NAME} event channel timeout/error: $!";
         HomeConnect_CloseEventChannel($hash);
@@ -793,7 +812,8 @@ sub HomeConnect_ReadEventChannel($)
       }
 
       my $len = sysread($hash->{conn},$inputbuf,32768);
-
+      Log3 $hash->{NAME}, 5, "$hash->{NAME} event channel len:\"$len\", received:\"$inputbuf\"";
+      
       # check if something was actually read
       if (defined($len) && $len > 0 && defined($inputbuf) && length($inputbuf) > 0) {
 
@@ -871,7 +891,9 @@ sub HomeConnect_ReadEventChannel($)
         }
         readingsEndUpdate($hash, 1);
       } else {
-        Log3 $hash->{NAME}, 5, "$hash->{NAME} event channel read failed";
+        Log3 $hash->{NAME}, 2, "$hash->{NAME} event channel read failed, len:\"$len\", received:\"$inputbuf\"";
+        HomeConnect_CloseEventChannel($hash);
+        return undef;
       }
     } 
     Log3 $hash->{NAME}, 5, "$hash->{NAME} event channel received no more data";

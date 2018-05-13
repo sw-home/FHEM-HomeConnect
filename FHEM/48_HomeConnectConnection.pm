@@ -37,7 +37,9 @@ sub HomeConnectConnection_Initialize($)
   $hash->{GetFn}        = "HomeConnectConnection_Get";
   $hash->{FW_summaryFn} = "HomeConnectConnection_FwFn";
   $hash->{FW_detailFn}  = "HomeConnectConnection_FwFn";
-  $hash->{AttrList}  	= "accessScope";
+  $hash->{AttrList}     = "disable:0,1 " .
+                          "accessScope" .
+                          $readingFnAttributes;
 }
 
 ###################################
@@ -396,6 +398,8 @@ sub HomeConnectConnection_RefreshTokenTimer($)
 {
   my ($hash) = @_;
   my $name = $hash->{NAME};
+
+  return if (AttrVal($name, "disable", 0) == 1);
 
   Log3 $name, 3, "$name refreshing token";
 

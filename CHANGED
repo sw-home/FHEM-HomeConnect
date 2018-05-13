@@ -1,3 +1,9 @@
+May 5, 2018
+	Bug fixes from Schlimbo
+	-add a "disabled" attribute
+	-FHEM no longer stops responding in certain Home Connect scenarios
+	-Fix changing settings when values are non numeric
+
 Mar 21, 2018 Version 1.0
 	fixed simulator mode (API URL had changed)
 	longer timeouts for synchronous API requests to improve work with slow simulator
