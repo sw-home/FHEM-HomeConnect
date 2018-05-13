@@ -38,7 +38,7 @@ sub HomeConnectConnection_Initialize($)
   $hash->{FW_summaryFn} = "HomeConnectConnection_FwFn";
   $hash->{FW_detailFn}  = "HomeConnectConnection_FwFn";
   $hash->{AttrList}     = "disable:0,1 " .
-                          "accessScope" .
+                          "accessScope " .
                           $readingFnAttributes;
 }
 
