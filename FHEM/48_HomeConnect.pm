@@ -54,6 +54,7 @@ sub HomeConnect_Initialize($)
   $hash->{GetFn}     = "HomeConnect_Get";
   $hash->{AttrList}  = "disable:0,1 " .
                        "updateTimer " .
+                       "stateFormat " .
                        $readingFnAttributes;
     return;
 }
@@ -301,7 +302,8 @@ sub HomeConnect_Init($)
 
       $attr{$hash->{NAME}}{icon} = $icon if (!defined $attr{$hash->{NAME}}{icon} && defined $icon);
       $attr{$hash->{NAME}}{alias} = $hash->{aliasname} if (!defined $attr{$hash->{NAME}}{alias} && defined $hash->{aliasname});
-      $attr{$hash->{NAME}}{webCmd} = "BSH.Common.Root.SelectedProgram:startProgram:stopProgram" if (!defined $attr{$hash->{NAME}}{webCmd});
+      $attr{$hash->{NAME}}{webCmd} = "BSH.Common.Root.SelectedProgram:startProgram:stopProgram" 
+                   if (!defined $attr{$hash->{NAME}}{webCmd} && "FridgeFreezer" ne $hash->{type});
 
       HomeConnect_GetPrograms($hash);
       HomeConnect_UpdateStatus($hash);
@@ -614,14 +616,12 @@ sub HomeConnect_UpdateStatus
 
   if (!defined $json) {
     # no status available
-    $hash->{STATE} = "Unknown";
     return undef;
   }
 
   my $parsed = eval{$JSON->decode ($json)};
   if($@){
     Log3 $hash->{NAME}, 3, "$hash->{NAME} - JSON error requesting status: $@";
-    $hash->{STATE} = "Unknown";
     return;
   }
 
@@ -682,7 +682,7 @@ sub HomeConnect_UpdateStatus
 
   readingsEndUpdate($hash, 1);
 
-  return "HomeConnect new state is ". $hash->{STATE};
+  return "HomeConnect new state is ". $readings{state};
 }
 
 #####################################
@@ -891,7 +891,7 @@ sub HomeConnect_ReadEventChannel($)
         }
         readingsEndUpdate($hash, 1);
       } else {
-        Log3 $hash->{NAME}, 2, "$hash->{NAME} event channel read failed, len:\"$len\", received:\"$inputbuf\"";
+        Log3 $hash->{NAME}, 5, "$hash->{NAME} event channel read failed, len:\"$len\", received:\"$inputbuf\"";
         HomeConnect_CloseEventChannel($hash);
         return undef;
       }

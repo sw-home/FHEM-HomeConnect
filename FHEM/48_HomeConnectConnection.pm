@@ -90,15 +90,18 @@ sub HomeConnectConnection_Define($$)
   if(int(@a) >= 4) {
     $hash->{client_id} = $a[2];
     $hash->{redirect_uri} = $a[3];
-    if (int(@a) > 4 && "simulator" eq $a[4]) {
-      $hash->{simulator} = "1";
-      $hash->{api_uri} = "https://simulator.home-connect.com";
+    if (int(@a) > 4) {
+      if ("simulator" eq $a[4]) {
+        $hash->{simulator} = "1";
+        $hash->{api_uri} = "https://simulator.home-connect.com";
+      } else {
+        $hash->{client_secret} = $a[4];
+      }
+    }
+    if (int(@a) > 5) {
+      $hash->{client_secret} = $a[5];
     }
   }
-#  else {
-#    $hash->{client_id} = "future built-in key";
-#    $hash->{redirect_uri} = "http://fhem:8083/fhem?cmd.Test=set%20hcconn%20auth%20";
-#  }
   $hash->{STATE} = "Login necessary";
   readingsBeginUpdate($hash);
   readingsBulkUpdate($hash, "state", $hash->{STATE});
@@ -170,6 +173,7 @@ sub HomeConnectConnection_GetAuthToken
     noshutdown => 1,
     data => {grant_type => 'authorization_code', 
 	client_id => $hash->{client_id},
+	client_secret => $hash->{client_secret},
 	code => $code,
 	redirect_uri => $hash->{redirect_uri}
     }
@@ -560,8 +564,10 @@ sub HomeConnectConnection_delrequest
       <li>Update your account to an <b>Advanced Account</b></li>
       <li>Create your Application under "My Applications", the REDIRECT-URL must be pointing to your local FHEM installation, e.g.<br/>
       <code>http://localhost:8083/fhem?cmd.Test=set%20hcconn%20auth%20&fwcsrf=myToken123</code><br/></li>
-      <li>Make sure to include the rest of the URL as shown above. Then define the FHEM HomeConnectConnection device with your API Key and URL:<br/>
-      <code>define hcconn HomeConnectConnection API-KEY REDIRECT-URL [simulator]</code><br/></li>
+      <li>Make sure to include the rest of the URL as shown above. 
+      <li>Note the Client ID and Client Secret after creating the Application
+      <li>Now define the FHEM HomeConnectConnection device with your API Key, Secret and URL:<br/>
+      <code>define hcconn HomeConnectConnection API-KEY REDIRECT-URL [simulator] CLIENT_SECRET</code><br/></li>
       <li>Click on the link "Home Connect Login" in the device and log in to your account. The simulator will not ask for any credentials.</li>
       <li>Execute the set scanDevices action to create FHEM devices for your appliances.</li>
     </ul>

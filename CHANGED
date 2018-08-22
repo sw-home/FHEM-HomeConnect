@@ -1,3 +1,7 @@
+Aug 22, 2018
+	Support new client secret API feature
+	Support stateFormat attribute for appliance devices
+
 May 5, 2018
 	Bug fixes from Schlimbo
 	-add a "disabled" attribute
@@ -15,7 +19,7 @@ Jan 25, 2018
 	fix handling of refresh token
 	
 Jan 21, 2018
-    Added error handling for invalid JSON strings
+	Added error handling for invalid JSON strings
     
 Aug 2, 2017
 	Fixed a Perl warning, thanks to n8falke.de
@@ -24,14 +28,14 @@ Aug 2, 2017
 	Fixed exception handling when logging in
 
 Jun 19, 2017
-    More debug logging and improved event stream connection retry handling
+	More debug logging and improved event stream connection retry handling
 
 Jun 12, 2017
-    Add state reading and more documentation to HomeConnectConnection
+	Add state reading and more documentation to HomeConnectConnection
 
 Jun 07, 2017
-    Added a increasing delay when trying to reconnect to the Home Connect event stream
-    Removed the "found nothing to read, channel closed" message hoping that the keep-alive works better detecting a missing connection 
+	Added a increasing delay when trying to reconnect to the Home Connect event stream
+	Removed the "found nothing to read, channel closed" message hoping that the keep-alive works better detecting a missing connection 
 
 Nov 29, 2016
 	Added reading and updating of appliance settings
@@ -41,30 +45,24 @@ Nov 28, 2016
 	Added this CHANGED file
 	
 Nov 21, 2016
-    Added timeout feature to check for missing keep alive messages
+	Added timeout feature to check for missing keep alive messages
 
 Nov 20, 2016
-
-    Improved logging, fixed some warnings
+	Improved logging, fixed some warnings
 
 Nov 18, 2016
-
-    Added controls file for FHEM update
+	Added controls file for FHEM update
 
 Nov 15, 2016
-
-    Fix crash when event channel does not open
+	Fix crash when event channel does not open
 	Show error messages when program start does not work
 
 Nov 3, 2016
-
-    Added new attribute accessScope to setup access rights 
-    Display error messages after failed Home Connect logon
+	Added new attribute accessScope to setup access rights 
+	Display error messages after failed Home Connect logon
 
 Nov 1, 2016
-
-    Documentation update
+	Documentation update
 
 Oct 31, 2016
-
-    First commit
+	First commit
