@@ -268,8 +268,9 @@ sub HomeConnectConnection_RefreshToken($)
     timeout => 10,
     noshutdown => 1,
     data => {grant_type => 'refresh_token', 
-	client_id => $conn->{client_id},  
-	refresh_token => $refreshToken
+      client_id => $conn->{client_id},  
+      client_secret => $conn->{client_secret},
+      refresh_token => $refreshToken
     }
   });
 
