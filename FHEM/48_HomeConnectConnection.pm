@@ -186,7 +186,7 @@ sub HomeConnectConnection_GetAuthToken
     Log3 $name, 2, "$name AuthTokenResponse $data";
 
     $data =~ s/\n//g;
-    if( $data !~ m/^{.*}$/m ) {
+    if( $data !~ m/^\{.*}$/m ) {
       Log3 $name, 2, "$name invalid json detected: >>$data<<";
       return "Invalid get token response";
     }
@@ -280,7 +280,7 @@ sub HomeConnectConnection_RefreshToken($)
     Log3 $name, 4, "$name: RefreshTokenResponse $data";
 
     $data =~ s/\n//g;
-    if( $data !~ m/^{.*}$/m ) {
+    if( $data !~ m/^\{.*}$/m ) {
 
       Log3 $name, 2, "$name: invalid json detected: >>$data<<";
 
