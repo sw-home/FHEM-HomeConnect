@@ -36,7 +36,6 @@ my %HomeConnect_Iconmap = (
 );
 
 my @HomeConnect_SettablePgmOptions = (
-  "BSH.Common.Option.Duration",
   "BSH.Common.Option.StartInRelative",
   "Cooking.Oven.Option.SetpointTemperature",
   "ConsumerProducts.CoffeeMaker.Option.FillQuantity",
