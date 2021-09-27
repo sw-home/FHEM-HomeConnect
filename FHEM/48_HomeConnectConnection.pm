@@ -3,7 +3,7 @@
 
 # $Id: $
 
-        Version 1.0
+        Version 1.1
 
 =head1 SYNOPSIS
         Bosch Siemens Home Connect Modul for FHEM
@@ -25,7 +25,12 @@ use JSON;
 use URI::Escape;
 use Switch;
 use Data::Dumper; #debugging
-require 'HttpUtils.pm';
+
+use vars qw($readingFnAttributes);
+use vars qw(%defs);
+use vars qw(%FW_webArgs);
+
+require HttpUtils;
 
 ##############################################
 sub HomeConnectConnection_Initialize($)
@@ -167,78 +172,27 @@ sub HomeConnectConnection_GetAuthToken
 
   Log3 $name, 4, "Got oauth code: $code";
 
-  my($err,$data) = HttpUtils_BlockingGet({
+  HttpUtils_NonblockingGet({
+    callback => \&HomeConnectConnection_CallbackGetAuthToken,
+    hash => $hash,
     url => "$hash->{api_uri}/security/oauth/token",
     timeout => 10,
     noshutdown => 1,
     data => {grant_type => 'authorization_code', 
-	client_id => $hash->{client_id},
-	client_secret => $hash->{client_secret},
-	code => $code,
-	redirect_uri => $hash->{redirect_uri}
+	    client_id => $hash->{client_id},
+	    client_secret => $hash->{client_secret},
+	    code => $code,
+	    redirect_uri => $hash->{redirect_uri}
     }
   });
-
-  if( $err ) {
-    Log3 $name, 2, "$name http request failed: $err";
-    return $err;
-  } elsif( $data ) {
-    Log3 $name, 2, "$name AuthTokenResponse $data";
-
-    $data =~ s/\n//g;
-    if( $data !~ m/^\{.*}$/m ) {
-      Log3 $name, 2, "$name invalid json detected: >>$data<<";
-      return "Invalid get token response";
-    }
-  }
-
-  my $json = eval {$JSON->decode($data)};
-  if($@){
-    Log3 $name, 2, "($name) - JSON error requesting tokens: $@";
-    return;
-  }
-
-  if( $json->{error} ) {
-    $hash->{lastError} = $json->{error};
-  }
-
-  setKeyValue($hash->{NAME}."_accessToken",$json->{access_token});
-  setKeyValue($hash->{NAME}."_refreshToken", $json->{refresh_token});
-
-  if( $json->{access_token} ) {
-    $hash->{STATE} = "Connected";
-    readingsBeginUpdate($hash);
-    readingsBulkUpdate($hash, "state", $hash->{STATE});
-
-    ($hash->{expires_at}) = gettimeofday();
-    $hash->{expires_at} += $json->{expires_in};
-
-    readingsBulkUpdate($hash, "tokenExpiry", scalar localtime $hash->{expires_at});
-    readingsEndUpdate($hash, 1);
-
-    foreach my $key ( keys %defs ) {
-      if (($defs{$key}->{TYPE} eq "HomeConnect") && ($defs{$key}->{hcconn} eq $hash->{NAME})) {
-        fhem "set $key init";
-      }
-    }
-
-    RemoveInternalTimer($hash);
-    InternalTimer(gettimeofday()+$json->{expires_in}*3/4,
-      "HomeConnectConnection_RefreshTokenTimer", $hash, 0);
-    return undef;
-  } else {
-    $hash->{STATE} = "Error";
-    readingsBeginUpdate($hash);
-    readingsBulkUpdate($hash, "state", $hash->{STATE});
-    readingsEndUpdate($hash, 1);
-  }
 } 
 
 #####################################
-sub HomeConnectConnection_RefreshToken($)
+sub HomeConnectConnection_RefreshToken($;$)
 {
-  my ($hash) = @_;
+  my ($hash, $nextcall) = @_;
   my $name = $hash->{NAME};
+  my $refresh = undef;
 
   my $conn = $hash->{hcconn};
   if (!defined $conn) {
@@ -249,99 +203,37 @@ sub HomeConnectConnection_RefreshToken($)
 
   my ($gkerror, $refreshToken) = getKeyValue($conn->{NAME}."_refreshToken");
   if (!defined $refreshToken) {
-    Log3 $name, 4, "$name: no token to be refreshed";
-    return undef;
+    $refresh = "no token to be refreshed";
   }
 
   if( defined($conn->{expires_at}) ) {
     my ($seconds) = gettimeofday();
     if( $seconds < $conn->{expires_at} - 300 ) {
-      Log3 $name, 4, "$name: no token refresh needed";
-      return undef 
+      $refresh = "no token refresh needed";
     }
   }
 
-  my ($gterror, $gotToken) = getKeyValue($conn->{NAME}."_accessToken");
-
-  my($err,$data) = HttpUtils_BlockingGet({
-    url => "$hash->{api_uri}/security/oauth/token",
-    timeout => 10,
-    noshutdown => 1,
-    data => {grant_type => 'refresh_token', 
-      client_id => $conn->{client_id},  
-      client_secret => $conn->{client_secret},
-      refresh_token => $refreshToken
+  if (defined($refresh)) {
+    Log3 $name, 4, "$name: $refresh";
+    if (defined($nextcall)) {      
+      $nextcall->{callback}($hash, $nextcall->{data});
     }
-  });
-
-  if( $err ) {
-    Log3 $name, 2, "$name: http request failed: $err";
-  } elsif( $data ) {
-    Log3 $name, 4, "$name: RefreshTokenResponse $data";
-
-    $data =~ s/\n//g;
-    if( $data !~ m/^\{.*}$/m ) {
-
-      Log3 $name, 2, "$name: invalid json detected: >>$data<<";
-
-    } else {
-      my $json = eval {decode_json($data)};
-      if($@){
-        Log3 $name, 2, "$name JSON error while reading refreshed token";
-      } else {
-
-        if( $json->{error} ) {
-          $hash->{lastError} = $json->{error};
-        }
-
-        setKeyValue($conn->{NAME}."_accessToken",  $json->{access_token});
-        setKeyValue($conn->{NAME}."_refreshToken", $json->{refresh_token});
-
-        if( $json->{access_token} ) {
-          $conn->{STATE} = "Connected";
-          $conn->{expires_at} = gettimeofday();
-          $conn->{expires_at} += $json->{expires_in};
-          undef $conn->{refreshFailCount};
-          readingsBeginUpdate($conn);
-          readingsBulkUpdate($conn, "tokenExpiry", scalar localtime $conn->{expires_at});
-          readingsBulkUpdate($conn, "state", $conn->{STATE});
-          readingsEndUpdate($conn, 1);
-          RemoveInternalTimer($conn);
-          InternalTimer(gettimeofday()+$json->{expires_in}*3/4,
-            "HomeConnectConnection_RefreshTokenTimer", $conn, 0);
-          if (!$gotToken) {
-            foreach my $key ( keys %defs ) {
-              if ($defs{$key}->{TYPE} eq "HomeConnect") {
-                fhem "set $key init";
-              }
-            }
-          }
-          return undef;
-        }
+  } else {
+    Log3 $name, 4, "$name: refreshing token";
+    HttpUtils_NonblockingGet({
+      callback => \&HomeConnectConnection_CallbackRefreshToken,
+      hash => $hash,
+      nextcall => $nextcall,
+      url => "$hash->{api_uri}/security/oauth/token",
+      timeout => 10,
+      noshutdown => 1,
+      data => {grant_type => 'refresh_token', 
+        client_id => $conn->{client_id},  
+        client_secret => $conn->{client_secret},
+        refresh_token => $refreshToken
       }
-    }
+    });
   }
-
-  $conn->{STATE} = "Refresh Error" ;
-
-  if (defined $conn->{refreshFailCount}) {
-    $conn->{refreshFailCount} += 1;
-  } else {
-    $conn->{refreshFailCount} = 1;
-  }
-
-  if ($conn->{refreshFailCount}==10) {
-    Log3 $conn->{NAME}, 2, "$conn->{NAME}: Refreshing token failed too many times, stopping";
-    $conn->{STATE} = "Login necessary";
-    setKeyValue($hash->{NAME}."_refreshToken", undef);
-  } else {
-    RemoveInternalTimer($conn);
-    InternalTimer(gettimeofday()+60, "HomeConnectConnection_RefreshTokenTimer", $conn, 0);
-  }
-
-  readingsBeginUpdate($hash);
-  readingsBulkUpdate($hash, "state", $hash->{STATE});
-  readingsEndUpdate($hash, 1);
   return undef;
 }
 
@@ -353,25 +245,8 @@ sub HomeConnectConnection_AutocreateDevices
   #### Read list of appliances
   my $URL = "/api/homeappliances";
 
-  my $applianceJson = HomeConnectConnection_request($hash,$URL);
-  if (!defined $applianceJson) {
-    return "Failed to connect to HomeConnectConnection API, see log for details";
-  }
-
-  my $appliances = eval {decode_json ($applianceJson)};
-  if($@){
-    Log3 $hash->{NAME}, 2, "$hash->{NAME} JSON error while reading appliances";
-  } else {
-    for (my $i = 0; 1; $i++) {
-      my $appliance = $appliances->{data}->{homeappliances}[$i];
-      if (!defined $appliance) { last };
-      if (!defined $defs{$appliance->{vib}}) {
-        fhem ("define $appliance->{vib} HomeConnect $hash->{NAME} $appliance->{haId}");
-      }
-    }
-  };
-
-  return undef;
+  my $data = {callback => \&HomeConnectConnection_ResponseAutocreateDevices, uri => $URL};
+  HomeConnectConnection_request($hash, $data);
 }
 
 #####################################
@@ -406,8 +281,6 @@ sub HomeConnectConnection_RefreshTokenTimer($)
 
   return if (AttrVal($name, "disable", 0) == 1);
 
-  Log3 $name, 3, "$name refreshing token";
-
   undef $hash->{expires_at};
   HomeConnectConnection_RefreshToken($hash);
 }
@@ -415,130 +288,304 @@ sub HomeConnectConnection_RefreshTokenTimer($)
 #####################################
 sub HomeConnectConnection_request
 {
-  my ($hash, $URL) = @_;
+  my ($hash, $data) = @_;
   my $name = $hash->{NAME};
+
+  Log3 $name, 4, "$name: request $data->{uri}";
   
   my $api_uri = (defined $hash->{hcconn}) ? $defs{$hash->{hcconn}}->{api_uri} : $hash->{api_uri};
 
-  $URL = $api_uri . $URL;
-
-  Log3 $name, 4, "$name request: $URL";
-
-  HomeConnectConnection_RefreshToken($hash);
-
-  my $conn = $hash->{hcconn};
-  if (!defined $conn) {
-    $conn = $name;
-  }
-  my ($gkerror, $token) = getKeyValue($conn."_accessToken");
-
-  my $param = {
-    url        => $URL,
-    hash       => $hash,
-    timeout    => 5,
-    noshutdown => 1,
-    header     => { "Accept" => "application/vnd.bsh.sdk.v1+json", "Authorization" => "Bearer $token" }
+  my $URL = $api_uri . $data->{uri};
+  my $nextcall = {
+    callback => \&HomeConnectConnection_requestAfterToken,
+    data => {
+      uri => $URL,
+      data=>$data->{data},
+      nextcall => {
+        callback => $data->{callback}
+      }
+    }    
   };
-
-  my ($err, $data) = HttpUtils_BlockingGet($param);
-
-  if ($err) {
-    Log3 $name, 2, "$name can't get $URL -- " . $err;
-    return undef;
-  }
-
-  Log3 $name, 4 , "$name response: " . $data;
-
-  return $data;
-
+  HomeConnectConnection_RefreshToken($hash, $nextcall);
 }
 
 #####################################
-sub HomeConnectConnection_putrequest
+sub HomeConnectConnection_requestAfterToken
 {
-  my ($hash, $URL, $put_data) = @_;
+  my ($hash, $data) = @_;
   my $name = $hash->{NAME};
-
-  my $api_uri = (defined $hash->{hcconn}) ? $defs{$hash->{hcconn}}->{api_uri} : $hash->{api_uri};
-
-  $URL = $api_uri . $URL;
-
-  Log3 $name, 4, "$name PUT request: $URL with data: $put_data";
-
-  HomeConnectConnection_RefreshToken($hash);
 
   my $conn = $hash->{hcconn};
   if (!defined $conn) {
     $conn = $name;
   }
+
   my ($gkerror, $token) = getKeyValue($conn."_accessToken");
 
-  my $param = {
-    url        => $URL,
-    method     => "PUT",
-    hash       => $hash,
-    timeout    => 5,
-    noshutdown => 1,
-    header     => { "Accept" => "application/vnd.bsh.sdk.v1+json",
-                    "Authorization" => "Bearer $token",
-                    "Content-Type" => "application/vnd.bsh.sdk.v1+json"
-                  },
-    data       => $put_data
-  };
-
-  my ($err, $data) = HttpUtils_BlockingGet($param);
-
-  if ($err) {
-    Log3 $name, 1, "$name can't put $URL -- " . $err;
-    return undef;
+  if (!defined($data)) {
+    Log3 $name, 1, "$name: requestAfterToken no data";
+    return;
   }
 
-  Log3 $name, 4, "$name PUT response: " . $data;
+  my $uri = $data->{uri};
+  if (!defined($uri)) {
+    Log3 $name, 1, "$name: requestAfterToken no uri";
+    return;
+  }
 
-  return $data;
+  Log3 $name, 4, "$name: requestAfterToken $uri";
 
+  my $param;
+  if (defined($data->{data})) {
+
+    if ($data->{data} eq "DELETE") {
+        $param = {
+          url        => $uri,
+          hash       => $hash,
+          nextcall   => $data->{nextcall},
+          callback   => \&HomeConnectConnection_CallbackRequest,
+          timeout    => 5,
+          noshutdown => 1,
+          method     => "DELETE",
+          header     => { "Accept" => "application/vnd.bsh.sdk.v1+json", "Authorization" => "Bearer $token" }
+        };
+    } else {
+      $param = {
+        url        => $uri,
+        hash       => $hash,
+        nextcall   => $data->{nextcall},
+        callback   => \&HomeConnectConnection_CallbackRequest,
+        timeout    => 5,
+        noshutdown => 1,
+        method     => "PUT",
+        header     => { "Accept" => "application/vnd.bsh.sdk.v1+json",
+                        "Authorization" => "Bearer $token",
+                        "Content-Type" => "application/vnd.bsh.sdk.v1+json"
+                      },
+        data       => $data->{data}
+      };
+    } 
+  } else {
+    $param = {
+      url        => $uri,
+      hash       => $hash,
+      nextcall   => $data->{nextcall},
+      callback   => \&HomeConnectConnection_CallbackRequest,
+      timeout    => 5,
+      noshutdown => 1,    
+      header     => { "Accept" => "application/vnd.bsh.sdk.v1+json", "Authorization" => "Bearer $token" }
+    };
+  }
+  HttpUtils_NonblockingGet($param);
 }
 
 #####################################
 sub HomeConnectConnection_delrequest
 {
-  my ($hash, $URL) = @_;
+  my ($hash, $data) = @_;
+  $data->{data} = "DELETE";
+  HomeConnectConnection_request($hash, $data);
+}
+
+#####################################
+sub HomeConnectConnection_CallbackRefreshToken
+{
+  my ($param, $err, $data) = @_;
+  my $hash = $param->{hash};
   my $name = $hash->{NAME};
-
-  my $api_uri = (defined $hash->{hcconn}) ? $defs{$hash->{hcconn}}->{api_uri} : $hash->{api_uri};
-
-  $URL = $api_uri . $URL;
-
-  Log3 $name, 4, "HomeConnectConnection DELETE request: $URL";
-
-  HomeConnectConnection_RefreshToken($hash);
 
   my $conn = $hash->{hcconn};
   if (!defined $conn) {
-    $conn = $name;
+    $conn = $hash;
+  } else {
+    $conn = $defs{$conn};
   }
-  my ($gkerror, $token) = getKeyValue($conn."_accessToken");
 
-  my $param = {
-    url        => $URL,
-    method     => "DELETE",
-    hash       => $hash,
-    timeout    => 5,
-    noshutdown => 1,
-    header     => { "Accept" => "application/vnd.bsh.sdk.v1+json", "Authorization" => "Bearer $token" }
-  };
+  if( $err ) {
+    Log3 $name, 2, "$name: http request failed: $err";
+    $hash->{lastError} = $err;
+  } elsif( $data ) {
+    Log3 $name, 4, "$name: RefreshTokenResponse $data";
 
-  my ($err, $data) = HttpUtils_BlockingGet($param);
+    $data =~ s/\n//g;
+    if( $data !~ m/^\{.*}$/m ) {
 
+      Log3 $name, 2, "$name: invalid json detected: >>$data<<";
+
+    } else {
+      my $json = eval {decode_json($data)};
+      if($@){
+        Log3 $name, 2, "$name JSON error while reading refreshed token";
+      } else {
+
+        if( $json->{error} ) {
+          $hash->{lastError} = $json->{error};
+        }
+
+        my ($gterror, $gotToken) = getKeyValue($conn->{NAME}."_accessToken"); #old token
+
+        setKeyValue($conn->{NAME}."_accessToken",  $json->{access_token});
+        setKeyValue($conn->{NAME}."_refreshToken", $json->{refresh_token});
+
+        if( $json->{access_token} ) {
+          $conn->{STATE} = "Connected";
+          $conn->{expires_at} = gettimeofday();
+          $conn->{expires_at} += $json->{expires_in};
+          undef $conn->{refreshFailCount};
+          readingsBeginUpdate($conn);
+          readingsBulkUpdate($conn, "tokenExpiry", scalar localtime $conn->{expires_at});
+          readingsBulkUpdate($conn, "state", $conn->{STATE});
+          readingsEndUpdate($conn, 1);
+          RemoveInternalTimer($conn);
+          InternalTimer(gettimeofday()+$json->{expires_in}*3/4,
+            "HomeConnectConnection_RefreshTokenTimer", $conn, 0);
+
+          # no old token - init HomeConnect devices
+          if (!$gotToken) {
+            foreach my $key ( keys %defs ) {
+              if ($defs{$key}->{TYPE} eq "HomeConnect") {
+                fhem "set $key init";
+              }
+            }
+          }
+
+          if (defined($param->{nextcall})) {
+            my $nextcall = $param->{nextcall}; 
+            $nextcall->{callback}($hash, $nextcall->{data});
+          }          
+          return;
+        }
+      }
+    }
+  }
+
+  $conn->{STATE} = "Refresh Error" ;
+
+  if (defined $conn->{refreshFailCount}) {
+    $conn->{refreshFailCount} += 1;
+  } else {
+    $conn->{refreshFailCount} = 1;
+  }
+
+  if ($conn->{refreshFailCount}==10) {
+    Log3 $conn->{NAME}, 2, "$conn->{NAME}: Refreshing token failed too many times, stopping";
+    $conn->{STATE} = "Login necessary";
+    setKeyValue($hash->{NAME}."_refreshToken", undef);
+  } else {
+    RemoveInternalTimer($conn);
+    InternalTimer(gettimeofday()+60, "HomeConnectConnection_RefreshTokenTimer", $conn, 0);
+  }
+
+  readingsBeginUpdate($hash);
+  readingsBulkUpdate($hash, "state", $hash->{STATE});
+  readingsEndUpdate($hash, 1);
+}
+
+#####################################
+sub HomeConnectConnection_CallbackGetAuthToken
+{
+  my ($param, $err, $data) = @_;
+  my $hash = $param->{hash};
+  my $name = $hash->{NAME};
+
+  if( $err ) {
+    Log3 $name, 2, "$name http request failed: $err";
+    $hash->{lastError} = $err;
+    return;
+  } elsif( $data ) {
+    Log3 $name, 2, "$name AuthTokenResponse $data";
+
+    $data =~ s/\n//g;
+    if( $data !~ m/^\{.*}$/m ) {
+      Log3 $name, 2, "$name invalid json detected: >>$data<<";
+      return;
+    }
+  }
+
+  my $JSON = JSON->new->utf8(0)->allow_nonref;
+  my $json = eval {$JSON->decode($data)};
+  if($@){
+    Log3 $name, 2, "($name) - JSON error requesting tokens: $@";
+    return;
+  }
+
+  if( $json->{error} ) {
+    $hash->{lastError} = $json->{error};
+  }
+
+  setKeyValue($hash->{NAME}."_accessToken",$json->{access_token});
+  setKeyValue($hash->{NAME}."_refreshToken", $json->{refresh_token});
+
+  if( $json->{access_token} ) {
+    $hash->{STATE} = "Connected";
+    readingsBeginUpdate($hash);
+    readingsBulkUpdate($hash, "state", $hash->{STATE});
+
+    ($hash->{expires_at}) = gettimeofday();
+    $hash->{expires_at} += $json->{expires_in};
+
+    readingsBulkUpdate($hash, "tokenExpiry", scalar localtime $hash->{expires_at});
+    readingsEndUpdate($hash, 1);
+
+    foreach my $key ( keys %defs ) {
+      if (($defs{$key}->{TYPE} eq "HomeConnect") && ($defs{$key}->{hcconn} eq $hash->{NAME})) {
+        fhem "set $key init";
+      }
+    }
+
+    RemoveInternalTimer($hash);
+    InternalTimer(gettimeofday()+$json->{expires_in}*3/4,
+      "HomeConnectConnection_RefreshTokenTimer", $hash, 0);
+  } else {
+    $hash->{STATE} = "Error";
+    readingsBeginUpdate($hash);
+    readingsBulkUpdate($hash, "state", $hash->{STATE});
+    readingsEndUpdate($hash, 1);
+  }
+}
+
+#####################################
+sub HomeConnectConnection_CallbackRequest
+{
+  my ($param, $err, $data) = @_;
+  my $hash = $param->{hash};
+  my $name = $hash->{NAME};
   if ($err) {
-    Log3 $name, 1, "$name can't delete $URL -- " . $err;
-    return undef;
+    Log3 $name, 2, "$name: error in request" . $err;    
+  } else {
+    Log3 $name, 4 , "$name: response " . $data;
   }
 
-  Log3 $name, 4, "HomeConnectConnection DELETE response: " . $data;
+  if (defined($param->{nextcall})) {
+    my $nextcall = $param->{nextcall};
+    $nextcall->{callback}($hash, $data);
+  }
+  else {
+    Log3 $name, 2 , "$name: no callback for request registered";
+  } 
+}
 
-  return $data;
+#####################################
+sub HomeConnectConnection_ResponseAutocreateDevices
+{
+  my ($hash, $data) = @_;
 
+  if (!defined $data) {
+    return "Failed to connect to HomeConnectConnection API, see log for details";
+  }
+
+  my $appliances = eval {decode_json ($data)};
+  if($@){
+    Log3 $hash->{NAME}, 2, "$hash->{NAME} JSON error while reading appliances";
+  } else {
+    for (my $i = 0; 1; $i++) {
+      my $appliance = $appliances->{data}->{homeappliances}[$i];
+      if (!defined $appliance) { last };
+      if (!defined $defs{$appliance->{vib}}) {
+        fhem ("define $appliance->{vib} HomeConnect $hash->{NAME} $appliance->{haId}");
+      }
+    }
+  };
 }
 
 
