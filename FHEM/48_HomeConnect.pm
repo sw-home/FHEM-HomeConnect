@@ -115,7 +115,7 @@ sub HomeConnect_Set($@)
   shift @a;
   my $command = shift @a;
 
-  Log3 $hash->{NAME}, 3, "set command: $command";
+  Log3 $hash->{NAME}, 3, "$hash->{NAME}: set command: $command";
 
   ## Start a program
   if($command eq "startProgram") {
@@ -308,7 +308,7 @@ sub HomeConnect_ResponseInit
   my $appliances = eval {$JSON->decode ($data)};
   if($@){
     Log3 $hash->{NAME}, 2, "$hash->{NAME}: JSON error requesting appliances: $@";
-    return "$hash->{NAME} init failed";
+    return;
   }
 
   for (my $i = 0; 1; $i++) {
@@ -320,7 +320,7 @@ sub HomeConnect_ResponseInit
       $hash->{brand} = $appliance->{brand};
       $hash->{vib} = $appliance->{vib};
       $hash->{connected} = $appliance->{connected};
-      Log3 $hash->{NAME}, 3, "$hash->{NAME} defined as HomeConnect $hash->{type} $hash->{brand} $hash->{vib}";
+      Log3 $hash->{NAME}, 3, "$hash->{NAME}: defined as HomeConnect $hash->{type} $hash->{brand} $hash->{vib}";
 
       my $icon = $HomeConnect_Iconmap{$appliance->{type}};
 
@@ -337,7 +337,7 @@ sub HomeConnect_ResponseInit
       return;
     }
   }
-  Log3 $hash->{NAME}, 3, "Specified appliance with haId $hash->{haId} not found";
+  Log3 $hash->{NAME}, 3, "$hash->{NAME}: Specified appliance with haId $hash->{haId} not found";
 }
 
 #####################################
@@ -347,7 +347,7 @@ sub HomeConnect_Undef($$)
 
    RemoveInternalTimer($hash);
    HomeConnect_CloseEventChannel($hash);
-   Log3 $hash->{NAME}, 3, "--- removed ---";
+   Log3 $hash->{NAME}, 3, "$hash->{NAME}: --- removed ---";
    return undef;
 }
 
@@ -471,7 +471,7 @@ sub HomeConnect_ResponseGetSettings
     my $JSON = JSON->new->utf8(0)->allow_nonref;
     my $parsed = eval {$JSON->decode ($json)};
     if($@){
-      Log3 $hash->{NAME}, 2, "$hash->{NAME} - JSON error requesting settings: $@";
+      Log3 $hash->{NAME}, 2, "$hash->{NAME}: JSON error requesting settings: $@";
     } else {
       my %readings = ();
       HomeConnect_parseSettingsToHash(\%readings,$parsed);
@@ -581,7 +581,7 @@ sub HomeConnect_parseOptionsToHash
     my $key = $optionsline->{key};
 #    $key =~ tr/\\./_/;
     $options{ $key } = "$optionsline->{value} $optionsline->{unit}";
-    Log3 $hash->{NAME}, 4, "$key = $optionsline->{value} $optionsline->{unit}";
+    Log3 $hash->{NAME}, 4, "$hash->{NAME}: $key = $optionsline->{value} $optionsline->{unit}";
   }
   return \%options;
 }
@@ -598,7 +598,7 @@ sub HomeConnect_parseOptionsToHash2
 #    $key =~ tr/\\./_/;
     $hash->{$key} = "$optionsline->{value}" if (defined $optionsline->{value});
     $hash->{$key} .= " $optionsline->{unit}" if (defined $optionsline->{unit});
-#    Log3 $hash->{NAME}, 4, "$key = $optionsline->{value} $optionsline->{unit}";
+#    Log3 $hash->{NAME}, 4, "$hash->{NAME}: $key = $optionsline->{value} $optionsline->{unit}";
   }
 }
 
@@ -760,7 +760,7 @@ sub HomeConnect_ConnectEventChannel
     callback   => \&HomeConnect_HttpConnected
   };
 
-  Log3 $hash->{NAME}, 5, "$hash->{NAME} connecting to event channel";
+  Log3 $hash->{NAME}, 5, "$hash->{NAME}: connecting to event channel";
 
   HttpUtils_NonblockingGet($param);
 
@@ -802,13 +802,13 @@ sub HomeConnect_HttpConnected
   }
   $hdr .= "\r\n";
 
-  Log3 $hash->{NAME}, 5, "$hash->{NAME} sending headers to event channel: $hdr";
+  Log3 $hash->{NAME}, 5, "$hash->{NAME}: sending headers to event channel: $hdr";
 
   syswrite $param->{conn}, $hdr;
   $hash->{conn} = $param->{conn};
   $hash->{eventChannelTimeout} = time();
 
-  Log3 $hash->{NAME}, 5, "$hash->{NAME} connected to event channel";
+  Log3 $hash->{NAME}, 5, "$hash->{NAME}: connected to event channel";
 
   # the server connection is left open to receive new events
 }
@@ -821,7 +821,7 @@ sub HomeConnect_CloseEventChannel($)
   if (defined $hash->{conn}) {
     $hash->{conn}->close();
     delete($hash->{conn});
-    Log3 $hash->{NAME}, 5, "$hash->{NAME} disconnected from event channel";
+    Log3 $hash->{NAME}, 5, "$hash->{NAME}: disconnected from event channel";
   }
 }
 
@@ -839,7 +839,7 @@ sub HomeConnect_ReadEventChannel($)
 		# check for timeout
 		if (defined $hash->{eventChannelTimeout} &&
 			(time() - $hash->{eventChannelTimeout}) > 140) {
-			Log3 $hash->{NAME}, 2, "$hash->{NAME} event channel timeout, two keep alive messages missing";
+			Log3 $hash->{NAME}, 2, "$hash->{NAME}: event channel timeout, two keep alive messages missing";
 			HomeConnect_CloseEventChannel($hash);
 			return undef;
 		}
@@ -851,16 +851,16 @@ sub HomeConnect_ReadEventChannel($)
 			# loop monitoring
 			$count  = $count + 1;
 			if ($count > 100){
-				Log3 $hash->{NAME}, 2, "$hash->{NAME} event channel fatal error: infinite loop";
+				Log3 $hash->{NAME}, 2, "$hash->{NAME}: event channel fatal error: infinite loop";
 				last;
 			}
 			# check channel data availability
 			my $tmp = $hash->{conn}->fileno();
 			my $nfound = select($rout=$rin, undef, undef, 0);
-			Log3 $hash->{NAME}, 5, "$hash->{NAME} event channel searching for data, fileno:\"$tmp\", nfound:\"$nfound\", loopCounter:\"$count\"";
+			Log3 $hash->{NAME}, 5, "$hash->{NAME}: event channel searching for data, fileno:\"$tmp\", nfound:\"$nfound\", loopCounter:\"$count\"";
 
 			if($nfound < 0) {
-				Log3 $hash->{NAME}, 2, "$hash->{NAME} event channel timeout/error: $!";
+				Log3 $hash->{NAME}, 2, "$hash->{NAME}: event channel timeout/error: $!";
 				HomeConnect_CloseEventChannel($hash);
 				return undef;
 			}
@@ -869,13 +869,13 @@ sub HomeConnect_ReadEventChannel($)
 			}
 
 			my $len = sysread($hash->{conn},$inputbuf,32768);
-			Log3 $hash->{NAME}, 5, "$hash->{NAME} event channel len:\"$len\", received:\"$inputbuf\"";
+			Log3 $hash->{NAME}, 5, "$hash->{NAME}: event channel len:\"$len\", received:\"$inputbuf\"";
 
 			# check if something was actually read
 			if (defined($len) && $len > 0 && defined($inputbuf) && length($inputbuf) > 0) {
 
 				# process data
-				Log3 $hash->{NAME}, 5, "$hash->{NAME} event channel received $inputbuf";
+				Log3 $hash->{NAME}, 5, "$hash->{NAME}: event channel received $inputbuf";
 
 				# reset timeout
 				$hash->{eventChannelTimeout} = time();
@@ -885,25 +885,26 @@ sub HomeConnect_ReadEventChannel($)
 				# split data into lines,
 				for (split /^/, $inputbuf) {
 					# check for http result line
+          if (length($_) == 0) {
+            next 
+          }
 					if (index($_,"HTTP/1.1") == 0) {
 						if (substr($_,9,3) ne "200") {
-							Log3 $hash->{NAME}, 2, "$hash->{NAME} event channel received an http error: $_";
+							Log3 $hash->{NAME}, 2, "$hash->{NAME}: event channel received an http error: $_";
 							HomeConnect_CloseEventChannel($hash);
 							return undef;
 						} else {
 							# successful connection, reset counter
 							$hash->{retrycounter} = 0;
 						}
-					}
-					# extract data json elements
-					if (index($_,"data:") == 0) {
+					} elsif (index($_,"data:") == 0) { # extract data json elements
 						if (length ($_) < 10) { next };
 						my $json = substr($_,5);
-						Log3 $hash->{NAME}, 5, "$hash->{NAME} event channel data: $json";
+						Log3 $hash->{NAME}, 5, "$hash->{NAME}: event channel data: $json";
 
 						my $parsed = eval {$JSON->decode ($json)};
 						if($@){
-							Log3 $hash->{NAME}, 2, "$hash->{NAME} - JSON error reading from event channel";
+							Log3 $hash->{NAME}, 2, "$hash->{NAME}: JSON error reading from event channel";
 						} else {
 							# update readings from json elements
 							my %readings = ();
@@ -921,7 +922,7 @@ sub HomeConnect_ReadEventChannel($)
 								}
 
 								readingsBulkUpdate($hash, $key, $readings{$key});
-								Log3 $hash->{NAME}, 4, "$key = $readings{$key}";
+								Log3 $hash->{NAME}, 4, "$hash->{NAME}: $key = $readings{$key}";
 							}
 						}
 						# define new device state
@@ -944,29 +945,25 @@ sub HomeConnect_ReadEventChannel($)
 							$state = "Idle";
 						}
 						readingsBulkUpdate($hash, "state", $state) if ($hash->{STATE} ne $state);
-					}
-
-					# disconnected event Morluktom 10.05.2020
-					if (index($_,"event:DISCONNECTED") == 0) {
+					} elsif (index($_,"event:DISCONNECTED") == 0) { # disconnected event Morluktom 10.05.2020
 						my $state = "Offline";
 						readingsBulkUpdate($hash, "state", $state) if ($hash->{STATE} ne $state);
-					}
-
-					# connected event Morluktom 10.05.2020
-					if (index($_,"event:CONNECTED") == 0) {
+					} elsif (index($_,"event:CONNECTED") == 0) { # connected event Morluktom 10.05.2020
 						HomeConnect_UpdateStatus($hash);
-					}
+					} else {
+            #Log3 $hash->{NAME}, 5, "$hash->{NAME}: event channel unknown: $_";
+          }
 				}
 				readingsEndUpdate($hash, 1);
 			} else {
-				Log3 $hash->{NAME}, 5, "$hash->{NAME} event channel read failed, len:\"$len\", received:\"$inputbuf\"";
+				Log3 $hash->{NAME}, 5, "$hash->{NAME}: event channel read failed, len:\"$len\", received:\"$inputbuf\"";
 				HomeConnect_CloseEventChannel($hash);
 				return undef;
 			}
 		} 
-		Log3 $hash->{NAME}, 5, "$hash->{NAME} event channel received no more data";
+		Log3 $hash->{NAME}, 5, "$hash->{NAME}: event channel received no more data";
 	} else {
-		Log3 $hash->{NAME}, 5, "$hash->{NAME} event channel is not connected";
+		Log3 $hash->{NAME}, 5, "$hash->{NAME}: event channel is not connected";
 	}
 }
 
