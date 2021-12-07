@@ -1,2 +1,2 @@
 UPD 2020-05-28_09:26:11 31752 FHEM/48_HomeConnect.pm
-UPD 2020-03-03_19:03:33 18802 FHEM/48_HomeConnectConnection.pm
+UPD 2020-03-03_19:03:33 20411 FHEM/48_HomeConnectConnection.pm
